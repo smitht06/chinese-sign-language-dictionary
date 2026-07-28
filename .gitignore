@@ -6,3 +6,5 @@ DictionaryBook/
 
 # macOS
 .DS_Store
+build/
+dist/
