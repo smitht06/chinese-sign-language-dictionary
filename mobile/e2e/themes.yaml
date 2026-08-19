@@ -1,0 +1,50 @@
+# Themes flow — pick a theme chip → results → first row → detail.
+# The results footer sits below all tier blocks, so scrollUntilVisible does
+# the heavy lifting; 丁香 is the first row and is guaranteed rendered.
+appId: com.example.signlang
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "search-input"
+    timeout: 60000
+# Tab buttons expose combined labels ("Themes, tab, 3 of 3") — match the prefix.
+- tapOn: "Themes.*"
+- assertVisible: "Browse by theme & difficulty"
+- scrollUntilVisible:
+    element:
+      text: "^植物$"
+- tapOn:
+    text: "^植物$"
+    index: 0
+- scrollUntilVisible:
+    element:
+      text: "植物 · .* signs"
+      index: 0
+    timeout: 20000
+# The first result row sits right below the header, straddling the tab bar —
+# center it before tapping or the tap lands on a tab instead.
+- scrollUntilVisible:
+    element:
+      text: "丁香, lilac.*"
+      index: 0
+    centerElement: true
+    timeout: 20000
+- tapOn:
+    text: "丁香, lilac.*"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: "How to sign"
+      index: 0
+    timeout: 10000
+- assertVisible:
+    text: "^lilac$"
+    index: 0
+# English hand-movement description — en_description regression guard.
+# (The stored text begins with a "(1)" step marker, hence the leading .*;
+# the dot inside matches the apostrophe so the YAML string needs no escapes.)
+- assertVisible:
+    text: ".*Left hand.s index finger extends horizontally.*"
+    index: 0

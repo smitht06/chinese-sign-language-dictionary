@@ -45,3 +45,5 @@ yarn-error.*
 /lib/assets.ts
 
 
+
+coverage/

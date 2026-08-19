@@ -33,6 +33,7 @@ export default function SearchScreen() {
   return (
     <View style={styles.container}>
       <TextInput
+        testID="search-input"
         style={styles.input}
         placeholder="Search Chinese or English…"
         value={query}

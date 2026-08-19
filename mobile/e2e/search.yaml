@@ -1,0 +1,57 @@
+# Search flow — English query → result → detail → back.
+# clearState forces the first-launch DB copy each run, so this also covers
+# the bundled-database install path. Run with: maestro test mobile/e2e/search.yaml
+#
+# Selector notes: list rows merge their texts into one accessibility element
+# ("柏树, cypress tree, B"), so row selectors match the combined string.
+# The keyboard stays up (hideKeyboard's dismissal tap can land on a row).
+appId: com.example.signlang
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "search-input"
+    timeout: 60000
+- tapOn:
+    id: "search-input"
+- inputText: "tree"
+# 柏树 is the first result row (ordered by letter); wait for the query to land.
+- extendedWaitUntil:
+    visible: "柏树, cypress tree.*"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: "树, tree.*"
+      index: 0
+    # Center the row above the keyboard overlay before tapping — a row merely
+    # "visible" can still sit under the keyboard, and the tap would hit keys.
+    centerElement: true
+- tapOn:
+    text: "树, tree.*"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: "How to sign"
+      index: 0
+    timeout: 10000
+- assertVisible:
+    text: "^树$"
+    index: 0
+- assertVisible:
+    text: "^tree$"
+    index: 0
+# English hand-movement description — the core en_description regression guard.
+- assertVisible:
+    text: "Both hands form a large circle.*"
+    index: 0
+- assertVisible:
+    text: "^Synonyms$"
+    index: 0
+# iOS back = left-edge swipe
+- swipe:
+    start: "1%,50%"
+    end: "90%,50%"
+    duration: 500
+- assertVisible:
+    id: "search-input"

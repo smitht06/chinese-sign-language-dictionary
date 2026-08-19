@@ -17,13 +17,14 @@ sign-language-database/
 │   ├── add_theme_order.py     ← writes `themes` table (difficulty_rank, tier) into sign_themed.db
 │   ├── build_progression.py   ← reads sign_themed.db → emits 主题难度进阶.md
 │   ├── translate_en.py        ← DeepSeek API: adds English translations (en_text / en_description)
+│   ├── test_data.py           ← data-invariant test suite (read-only); the CI gate
 │   └── build_asl_videos.py    ← ASL-LEX videos → H.264 mp4 + sign_id matches (standalone tool, app does not use)
 ├── ASL Data/            ← ASL-LEX dataset (86 .webm videos + signdata.csv); not committed
 ├── build/               ← transcoded mp4s + asl_videos.json + match audit log (generated)
 ├── images/               ← 6699 extracted sign images (v{N}_ prefixed)
 ├── signs.db              ← base DB (signs + meanings)
 ├── sign_themed.db        ← derivative: adds signs.theme column + themes table
-├── mobile/               ← Expo React Native offline app (search / browse / themes)
+├── mobile/               ← Expo React Native offline app (search / browse / themes); Jest tests in __tests__/, Maestro flows in e2e/, eas.json
 └── 主题难度进阶.md        ← generated teaching-order view of sign_themed.db
 ```
 
@@ -231,9 +232,11 @@ Note `mobile/metro.config.js` adds `db` to `assetExts` so the database bundles a
 - **Re-order or rename difficulty tiers** — edit `TIERS` in `scripts/add_theme_order.py`, rerun it, then `build_progression.py`. The theme table is rebuilt from scratch each run (`DROP TABLE IF EXISTS`), so it's safe to iterate.
 - **New themes / retag** — requires the source docx (not in repo). Restore it, edit `add_themes.py` if the docx structure changed, rerun against a fresh copy of `signs.db` → `sign_themed.db`, then redo the two theme-order commands.
 
-## Validation after any parser change
+## Validation
 
-Run the extraction, then sanity-check:
+**Primary gate: `python3 scripts/test_data.py`** — runs every data invariant in one shot, read-only, exit 1 on any failure. Covers: counts (6699 signs / 8687 meanings), no empty descriptions, no variant-glyph leakage, valid FKs + letters, theme integrity (31 / 1213 / 52), 100% English coverage (`en_text` + `en_description`), every `image_path` resolving to a real file, `asl_image_path` validity. Also runs on the base DB via `--db signs.db` (theme/en checks auto-skip). CI runs both on every push.
+
+The manual queries below remain as reference for digging into a failure:
 
 ```bash
 sqlite3 signs.db "SELECT COUNT(*) FROM signs;              -- expect 6699
@@ -253,3 +256,29 @@ sqlite3 sign_themed.db "
   SELECT COUNT(*) FROM signs WHERE theme LIKE '%|%';   -- expect 52 (multi-theme rows)
 "
 ```
+
+## Testing & CI
+
+Three layers; layers 1–2 run in GitHub Actions (`.github/workflows/ci.yml`) on every push/PR:
+
+1. **Data invariants (Python)** — `python3 scripts/test_data.py` (and `--db signs.db`). Stdlib only, read-only on the DBs; negative tests go on /tmp copies.
+2. **Unit + component (Jest)** — `cd mobile && npm test`. SQL regression guards in `mobile/__tests__/lib/db.test.ts` pin the en_text/en_description columns to the queries (the "English disappeared" bug class). Screen tests render the real expo-router tree with mocked db/assets. Load-bearing details: `.db` imports and `lib/assets` are stubbed via `moduleNameMapper` (both generated + gitignored — the CI job runs `build_data.py` before `tsc` since type-checking needs the real `lib/assets.ts`), and `renderRouter` needs an **absolute** app-dir path built from `__dirname` (fixture strings resolve against `process.cwd()`, not the test file). `mobile/__tests__/helpers/mockDb.ts` is the shared `useDb` mock.
+3. **E2E (Maestro, local only)** — `maestro test mobile/e2e/` against a local Release build (`npx expo run:ios --configuration Release`). Flows use ASCII input only (Chinese typed input is unreliable in Maestro) and target first rows (FlatList virtualization hides off-screen rows from the accessibility tree).
+
+CI: `test-python` (ubuntu, python 3.13) + `test-mobile` (node 22; `npm ci` → `npx tsc --noEmit` → `npm test`, cwd `mobile`).
+
+## EAS deployment (expo.dev)
+
+Profiles in `mobile/eas.json` — internal distribution, no paid Apple account needed:
+
+- `development` — dev client, iOS simulator
+- `preview` — Android APK + iOS simulator app (what internal builds use)
+- `production` — placeholder; needs store credentials
+
+Key facts:
+
+- **`eas-build-pre-install` npm hook** (`mobile/package.json`) runs `scripts/build_data.py` before EAS installs deps. The DB, images, and `lib/assets.ts` are generated + gitignored — without the hook a cloud build would silently bundle an empty dictionary. The hook fails loudly if python3 is missing.
+- **No `.easignore`** — it would replace `.gitignore` handling wholesale and risk excluding `images/`/`sign_themed.db`. EAS uploads git-tracked files from the repo root; per-build upload ≈355 MB (images + DB).
+- **Build from committed state** — commit everything before `eas build`.
+
+First-time setup (user-run, needs an Expo account): `npm install -g eas-cli` → `cd mobile && eas login` → `eas init` (writes `extra.eas.projectId` into `app.json` — commit it) → `eas build --profile preview --platform android` (accept the one-time keystore prompt) / `--platform ios` → `npx eas build:run --platform ios --profile preview` installs + launches the simulator build.

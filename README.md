@@ -131,4 +131,14 @@ python3 mobile/scripts/build_data.py
 python3 scripts/build_asl_videos.py   # 需要 ffmpeg + ASL Data/ 数据集
 ```
 
+## 测试与部署
+
+三层测试 + EAS（expo.dev）内部发布已配置好，CI 在每次推送时运行数据与 Jest 两层：
+
+- **数据不变量（Python）** — `python3 scripts/test_data.py`（只读，一次性校验全部数据约束）
+- **单元/组件测试（Jest）** — `cd mobile && npm test`
+- **端到端（Maestro，本地）** — `maestro test mobile/e2e/`（需本地 Release 构建）
+
+部署：`mobile/eas.json` 提供 `preview` 档（Android APK + iOS 模拟器包），`mobile/package.json` 的 `eas-build-pre-install` 钩子会在云端构建前重新生成数据库/图片资源。详细步骤见 `mobile/README.md` 与根目录 `CLAUDE.md` 的 Testing & CI / EAS deployment 两节。
+
 

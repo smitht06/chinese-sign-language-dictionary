@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-python:
+    name: Data pipeline (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Validate data invariants
+        run: |
+          python3 scripts/test_data.py
+          python3 scripts/test_data.py --db signs.db
+
+  test-mobile:
+    name: Mobile (TypeScript + Jest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      # lib/assets.ts + assets/data/ are generated + gitignored; tsc needs them.
+      # Also exercises the data-bundling script on every CI run.
+      - run: python3 scripts/build_data.py
+      - run: npx tsc --noEmit
+      - run: npm test

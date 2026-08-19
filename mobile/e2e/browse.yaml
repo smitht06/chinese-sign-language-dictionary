@@ -1,0 +1,45 @@
+# Browse flow — letter A → first row → detail with English content.
+# Row selectors match the merged accessibility text ("丈夫, husband, A, …").
+appId: com.example.signlang
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "search-input"
+    timeout: 60000
+# Tab buttons expose combined labels ("Browse, tab, 2 of 3") — match the prefix.
+- tapOn: "Browse.*"
+- assertVisible: "Select a letter to browse signs."
+- tapOn:
+    text: "^A$"
+# 丈夫 is the first row for letter A (rows ordered by Chinese text).
+- extendedWaitUntil:
+    visible:
+      text: "丈夫, husband.*"
+      index: 0
+    timeout: 10000
+- assertVisible:
+    text: "Letter A · .* signs"
+    index: 0
+- tapOn:
+    text: "丈夫, husband.*"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: "How to sign"
+      index: 0
+    timeout: 10000
+# Detail of the 爱人 entry: primary word + English + synonyms.
+- assertVisible:
+    text: "^spouse$"
+    index: 0
+- assertVisible:
+    text: "Both hands extend thumbs.*"
+    index: 0
+- assertVisible:
+    text: "^Synonyms$"
+    index: 0
+- assertVisible:
+    text: "^husband$"
+    index: 0
