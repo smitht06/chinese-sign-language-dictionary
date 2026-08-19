@@ -6,3 +6,11 @@ DictionaryBook/
 
 # macOS
 .DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# ASL-LEX source dataset (not committed) + its generated artifacts
+ASL Data/*
+build/

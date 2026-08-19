@@ -1,6 +1,9 @@
 # Chinese Sign Language Dictionary (Derivative Dataset)
 
+> **English:** [README.en.md](./README.en.md) · **中文:** 本文档
+
 中国通用手语词典的结构化数据集 — 从《国家通用手语词典（全四册）》抽取，整理为 SQLite 数据库 + 手势图片集合。
+
 
 ## ⚠️ 版权声明 · License & Disclaimer
 
@@ -18,9 +21,14 @@
 | 文件 / 目录 | 说明 |
 |---|---|
 | `signs.db` | SQLite 数据库，2.0 MB，两张表（`signs`, `meanings`） |
+| `sign_themed.db` | 衍生库：增加 `signs.theme` 列 + `themes` 难度表 |
 | `images/` | 6699 张手势图（PNG/JPG），~350 MB |
 | `scripts/extract_epub.py` | 抽取管线，Python 3 stdlib，无外部依赖 |
+| `scripts/translate_en.py` | 用 DeepSeek API 为全部词条/打法添加英文翻译 |
+| `scripts/build_asl_videos.py` | 将 ASL-LEX 视频转码为 H.264 并按英文词匹配到手势 |
+| `mobile/` | Expo React Native 离线 App（搜索 / 字母浏览 / 主题浏览） |
 | `CLAUDE.md` | 架构文档：schema、数据形态、解析决策、常用查询 |
+
 
 ## 数据规模
 
@@ -58,3 +66,81 @@ python3 scripts/extract_epub.py
 ```
 
 约 10 秒产出 `signs.db` 与 `images/`。管线细节见 `CLAUDE.md`。
+
+## 英文翻译（DeepSeek API）
+
+为全部 8687 个中文释义与 6699 条打法描述添加英文翻译，写入 `sign_themed.db`：
+
+```bash
+export DEEPSEEK_API_KEY=sk-...
+python3 scripts/translate_en.py            # 翻译全部（可断点续跑）
+python3 scripts/translate_en.py --only meanings   # 只翻译词条
+python3 scripts/translate_en.py --only descriptions  # 只翻译打法
+```
+
+- 新增列：`meanings.en_text`、`signs.en_description`，以及 `translations` 审计表。
+- 脚本可续跑：只翻译目标列为 NULL 的行，中断后重跑即可继续。
+- 原中文列保持不变，英文为增量补充。
+
+## 移动端 App（Expo React Native，离线）
+
+`mobile/` 是一个完全离线的 Expo App，打包全部 6699 张手势图 + 数据 + 英文翻译。
+
+**功能：**
+- **搜索** — 按中文词或英文翻译搜索
+- **字母浏览** — A–Z + # 分区
+- **主题浏览** — 按 `sign_themed.db` 的难度分级（入门→高级）
+- **手势详情** — 大图、中文词、英文翻译、打法描述（中英）、同义词、同词不同打法
+- **ASL 图片（可选）** — 将美国手语（ASL）图片放入 `asl_images/`，App 会为匹配的手势显示 ASL 图（带 "ASL" 角标），否则回退到中文手语图
+- **ASL 视频（可选）** — 为有 ASL-LEX 视频的手势在详情页底部显示 2 秒 ASL 演示视频（带 "ASL" 角标与播放按钮）
+
+**构建与运行：**
+
+```bash
+# 1. 打包数据（复制 DB + 全部图片 + 生成资源映射）
+python3 mobile/scripts/build_data.py
+
+# 2. 启动 App
+cd mobile
+npm install
+npx expo start
+```
+
+> 打包后的数据（`mobile/assets/data/` 与 `mobile/app/assets.ts`）由构建脚本生成，已加入 `.gitignore`，不提交到仓库。
+
+### 添加 ASL 手势图片
+
+App 支持在某个手势有 ASL 图片时显示它，否则回退到中文手语（CSL）图片。
+
+1. 在仓库根目录创建 `asl_images/` 文件夹。
+2. 放入 ASL 图片，文件名与手势现有图片文件名一致。例如 `image_path` 为 `images/v1_txt005_2.jpg` 的手势，其 ASL 图片为 `asl_images/v1_txt005_2.jpg`。
+3. 重新运行构建脚本：
+
+```bash
+python3 mobile/scripts/build_data.py
+```
+
+构建脚本会把 ASL 图片复制进 App 资源包、为匹配的手势写入 `signs.asl_image_path`，并重新生成资源映射。手势详情页随后会显示带 "ASL" 角标的 ASL 图。无需改动 App 代码。
+
+### 添加 ASL 手势视频
+
+App 支持在详情页**底部**为有 ASL 视频的手势显示一段 2 秒演示视频（不替换顶部图片）。视频来自 [ASL-LEX](https://asl-lex.org/) 数据集：
+
+1. 在仓库根目录放置 `ASL Data/`（`ASL examples/*.webm` + `Data Files/signdata.csv`）。
+2. 运行视频准备脚本（需要 ffmpeg，用于把 iOS 不支持的 WebM 转码为 H.264）：
+
+   ```bash
+   python3 scripts/build_asl_videos.py
+   ```
+
+   该脚本转码全部 `.webm` → `build/asl_videos/*.mp4`，并按其英文词（精确匹配 `meanings.en_text` → CSV 同义词 → 词边界模糊匹配）匹配到 `sign_themed.db` 的手势，产出 `build/asl_videos.json`（sign_id → 视频文件）与审计日志 `build/asl_videos_match.log`。
+
+3. 重新运行打包脚本：
+
+   ```bash
+   python3 mobile/scripts/build_data.py
+   ```
+
+   打包脚本会把匹配的视频复制进 App 资源包、写入 `signs.asl_video_path`，并重新生成资源映射。详情页随后会在底部显示带播放按钮的 ASL 视频。
+
+

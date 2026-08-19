@@ -1,0 +1,139 @@
+# Chinese Sign Language Dictionary (Derivative Dataset)
+
+A structured dataset of Chinese Sign Language (中国通用手语) — extracted from *National Common Chinese Sign Language Dictionary (国家通用手语词典, 4 volumes)* and organized into a SQLite database plus a collection of sign images.
+
+## ⚠️ License & Disclaimer
+
+**This repository is for non-commercial use only** (research, education, accessibility tooling).
+
+- This dataset is a derivative work of *National Common Chinese Sign Language Dictionary*. All rights to the original text and images belong to its publishers, compilers, and respective rights holders.
+- This repository does **NOT** include the original EPUB/PDF source books — only programmatically extracted, structured data and images.
+- **Commercial use is strictly prohibited** (including but not limited to paid apps, commercial training, resale, etc.).
+- If you are a rights holder and believe this repository infringes your rights, please contact us via GitHub issue or [@WishingCat](https://github.com/WishingCat). We will remove the relevant content immediately upon notice.
+
+## Contents
+
+| File / Directory | Description |
+|---|---|
+| `signs.db` | Base SQLite database, 2.0 MB, two tables (`signs`, `meanings`) |
+| `sign_themed.db` | Derivative DB: adds `signs.theme` column + `themes` difficulty table |
+| `images/` | 6,699 sign images (PNG/JPG), ~350 MB |
+| `scripts/extract_epub.py` | Extraction pipeline, Python 3 stdlib, no external dependencies |
+| `scripts/translate_en.py` | Adds English translations to all entries/descriptions via the DeepSeek API |
+| `scripts/build_asl_videos.py` | Transcodes ASL-LEX videos to H.264 and matches them to signs by English word |
+| `mobile/` | Expo React Native offline app (search / browse / themes) |
+| `CLAUDE.md` | Architecture docs: schema, data shapes, parsing decisions, common queries |
+
+## Data Scale
+
+- Sign entries (`signs`): **6,699**
+- Chinese meanings (`meanings`): **8,687**
+- Letter sections: 24 (A–F / G–M / N–X / Y Z #; no I/U/V, matching real pinyin usage)
+- Signs with variants ①②/❶❷: 806
+
+## Schema Overview
+
+```
+signs    (id, image_path, description, source_entry, letter, volume)
+meanings (id, sign_id → signs.id, text, variant_index, order_in_entry)
+```
+
+For detailed column-level documentation, the three typical data shapes (multiple meanings sharing one image / same word with multiple signs / variants + multiple meanings), and common queries, see [`CLAUDE.md`](./CLAUDE.md).
+
+## Quick Start
+
+```bash
+# Look up a sign image and its hand-movement description by Chinese word
+sqlite3 signs.db "
+  SELECT s.image_path, s.description
+  FROM meanings m JOIN signs s ON s.id = m.sign_id
+  WHERE m.text = '妻子';
+"
+```
+
+## Rebuilding the Data (requires your own EPUB source)
+
+This repository does not include the source books. If you legally own the 4 EPUB volumes, place them at `DictionaryBook/Volume 1..4.epub`, then:
+
+```bash
+python3 scripts/extract_epub.py
+```
+
+This produces `signs.db` and `images/` in about 10 seconds. Pipeline details are in `CLAUDE.md`.
+
+## English Translations (DeepSeek API)
+
+Adds English translations for all 8,687 Chinese meanings and 6,699 hand-movement descriptions, written into `sign_themed.db`:
+
+```bash
+export DEEPSEEK_API_KEY=sk-...
+python3 scripts/translate_en.py                 # translate everything (resumable)
+python3 scripts/translate_en.py --only meanings # words only
+python3 scripts/translate_en.py --only descriptions
+```
+
+- New columns: `meanings.en_text`, `signs.en_description`, plus a `translations` audit table.
+- The script is resumable: it only translates rows whose target column is `NULL`, so you can re-run after an interruption to continue.
+- Original Chinese columns are left untouched; English is added incrementally.
+
+## Mobile App (Expo React Native, Offline)
+
+`mobile/` is a fully offline Expo app that bundles all 6,699 sign images, the data, and the English translations.
+
+**Features:**
+- **Search** — by Chinese word or English translation
+- **Browse** — A–Z + # letter sections
+- **Themes** — browse by difficulty tier from `sign_themed.db` (beginner → advanced)
+- **Sign detail** — large image, Chinese word, English translation, hand-movement description (Chinese + English), synonyms, and other 打法 (variants) for the same word
+- **ASL images (optional)** — drop American Sign Language images into `asl_images/` and the app will show them (with an "ASL" badge) instead of the CSL image for matching signs
+- **ASL videos (optional)** — signs matched to an ASL-LEX video get a 2-second ASL demonstration clip at the bottom of the detail screen (with an "ASL" badge and play button)
+
+**Build & run:**
+
+```bash
+# 1. Bundle the data (copy DB + all images + generate asset map)
+python3 mobile/scripts/build_data.py
+
+# 2. Start the app
+cd mobile
+npm install
+npx expo start
+```
+
+> The bundled data (`mobile/assets/data/` and `mobile/app/assets.ts`) is generated by the build script and is gitignored — it is not committed to the repository.
+
+### Adding ASL sign images
+
+The app supports showing an American Sign Language (ASL) image for a sign when one is available, falling back to the Chinese Sign Language (CSL) image otherwise.
+
+1. Create an `asl_images/` folder in the repo root.
+2. Drop ASL images in, named to match the sign's existing image filename. For example, a sign whose `image_path` is `images/v1_txt005_2.jpg` will use `asl_images/v1_txt005_2.jpg` as its ASL image.
+3. Re-run the build script:
+
+```bash
+python3 mobile/scripts/build_data.py
+```
+
+The build script copies the ASL images into the app bundle, sets `signs.asl_image_path` for matching signs, and regenerates the asset map. The sign detail screen then shows the ASL image with an "ASL" badge. No app code changes are needed.
+
+### Adding ASL sign videos
+
+The app shows a 2-second ASL demonstration clip in a section at the **bottom** of the detail screen for signs that have one (it does not replace the image at the top). The videos come from the [ASL-LEX](https://asl-lex.org/) dataset:
+
+1. Place `ASL Data/` in the repo root (`ASL examples/*.webm` + `Data Files/signdata.csv`).
+2. Run the video-prep script (requires ffmpeg — iOS can't play the source WebM/VP8, so it transcodes to H.264):
+
+   ```bash
+   python3 scripts/build_asl_videos.py
+   ```
+
+   The script transcodes every `.webm` to `build/asl_videos/*.mp4` and matches each video to a sign in `sign_themed.db` by its English word (exact `meanings.en_text` match → CSV synonyms → token-boundary fuzzy match), producing `build/asl_videos.json` (sign_id → video file) and the audit log `build/asl_videos_match.log`.
+
+3. Re-run the bundle script:
+
+   ```bash
+   python3 mobile/scripts/build_data.py
+   ```
+
+   The bundle script copies the matched videos into the app bundle, sets `signs.asl_video_path`, and regenerates the asset map. The detail screen then shows the ASL video player at the bottom.
+

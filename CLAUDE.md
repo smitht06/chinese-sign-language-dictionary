@@ -15,12 +15,18 @@ sign-language-database/
 │   ├── extract_epub.py        ← base pipeline: EPUB → signs.db + images/
 │   ├── add_themes.py          ← one-shot tag pass (docx → signs.theme); input docx removed from repo, kept for reference
 │   ├── add_theme_order.py     ← writes `themes` table (difficulty_rank, tier) into sign_themed.db
-│   └── build_progression.py   ← reads sign_themed.db → emits 主题难度进阶.md
+│   ├── build_progression.py   ← reads sign_themed.db → emits 主题难度进阶.md
+│   ├── translate_en.py        ← DeepSeek API: adds English translations (en_text / en_description)
+│   └── build_asl_videos.py    ← ASL-LEX videos → H.264 mp4 + sign_id matches (build/asl_videos.json)
+├── ASL Data/            ← ASL-LEX dataset (86 .webm videos + signdata.csv); not committed
+├── build/               ← transcoded mp4s + asl_videos.json + match audit log (generated)
 ├── images/               ← 6699 extracted sign images (v{N}_ prefixed)
 ├── signs.db              ← base DB (signs + meanings)
 ├── sign_themed.db        ← derivative: adds signs.theme column + themes table
+├── mobile/               ← Expo React Native offline app (search / browse / themes)
 └── 主题难度进阶.md        ← generated teaching-order view of sign_themed.db
 ```
+
 
 ## Rebuild commands — one per artifact
 
@@ -70,6 +76,9 @@ The source EPUBs have a predictable shape per letter section. The parser exploit
 | `source_entry` | TEXT | 原书 h2 标题清洗版（去拼音、去 html），仅供溯源 |
 | `letter` | TEXT | 首字母分区 `A`–`Z` 或 `#`（其他） |
 | `volume` | INTEGER | 来自第几册（1–4） |
+| `asl_image_path` | TEXT / NULL | 可选 ASL 图片相对路径（`asl_images/...`）；由 `build_data.py` 写入，NULL 表示无 ASL 图 |
+| `asl_video_path` | TEXT / NULL | 可选 ASL 视频相对路径（`asl_videos/...`）；由 `build_data.py` 从 `build/asl_videos.json` 写入，NULL 表示无 ASL 视频 |
+
 
 ### `meanings` — one row per Chinese meaning; multiple rows may point to the same sign
 
@@ -165,7 +174,59 @@ ORDER BY t.difficulty_rank, s.id, m.order_in_entry;
 
 Human-readable view only — do not parse it. Regenerated from the DB by `build_progression.py`; every word shown comes from `meanings.text` (not from the docx). Same-sign-different-打法 words get ①② suffixes in the output.
 
+## English translations — `scripts/translate_en.py`
+
+Adds English translations to `sign_themed.db` via the DeepSeek chat-completions API. Additive and backward-compatible:
+
+- `meanings.en_text` — English translation of the Chinese word (TEXT, NULL until translated)
+- `signs.en_description` — English translation of the hand-movement instructions (TEXT, NULL until translated)
+- `translations` — audit table `(kind, source_id, model, status)`; `kind ∈ {'meaning','sign'}`, `source_id` = `meanings.id` or `signs.id`
+
+**Resumable:** only rows whose target column is NULL are translated; commits per batch. Re-run to finish after an interruption. API key comes from `DEEPSEEK_API_KEY` (never hardcoded). Stdlib only (`urllib`).
+
+```bash
+export DEEPSEEK_API_KEY=sk-...
+python3 scripts/translate_en.py                 # both passes
+python3 scripts/translate_en.py --only meanings # words only
+python3 scripts/translate_en.py --only descriptions
+```
+
+Two distinct system prompts: one for short words (`MEANINGS_SYSTEM`), one for hand-movement instructions (`DESCRIPTIONS_SYSTEM`, which preserves `（一）/（二）` step structure and maps hand/finger terminology). The `translations` table lets you audit which rows were translated and by which model.
+
+## Mobile app — `mobile/`
+
+An Expo React Native app (expo-router + expo-sqlite) that bundles the full dataset for offline use.
+
+**Data bundling (`mobile/scripts/build_data.py`):** copies `sign_themed.db` → `mobile/assets/data/dictionary.db`, copies all 6699 images → `mobile/assets/data/images/`, and generates `mobile/app/assets.ts` — a static `require()` map from `image_path` → bundled asset. The app resolves images through this map (`SignImage` component). Generated artifacts are gitignored.
+
+**Optional ASL images:** if an `asl_images/` folder exists at the repo root, the build script also copies those into `mobile/assets/data/asl_images/`, sets `signs.asl_image_path` for signs whose `image_path` basename matches an ASL filename, and adds an `aslImageAssets` map to `assets.ts`. `SignImage` shows the ASL image (with an "ASL" badge) when `asl_image_path` is set, falling back to the CSL image otherwise.
+
+**Optional ASL videos (`scripts/build_asl_videos.py` + `build_data.py`):** the ASL-LEX dataset (`ASL Data/`, not committed) provides 86 short `.webm` videos. `build_asl_videos.py` transcodes each to H.264 `.mp4` (iOS can't play VP8/WebM) into `build/asl_videos/`, matches each to a `sign_id` by English word, and writes `build/asl_videos.json` (sign_id → `WORD.mp4`) plus the audit log `build/asl_videos_match.log`. Matching priority: manual overrides (`MANUAL_MATCHES`) → exact `meanings.en_text` → exact CSV synonyms (`SignBankEnglishTranslations` / `DominantTranslation`) → token-boundary fuzzy (a full token of the video word must appear in an `en_text` term). Two deliberate guardrails: `en_description` is never used for matching (generic verbs cause false-positive clusters), and untranslated-Chinese `en_text` rows are skipped (their normalized form is `""`, which substring-matched everything). Then `build_data.py` copies the matched mp4s into `mobile/assets/data/asl_videos/`, sets `signs.asl_video_path`, and emits an `aslVideoAssets` map. `SignVideo` (expo-video) renders the clip at the bottom of the detail screen with an "ASL" badge and a play/pause toggle; it renders nothing when the sign has no video.
+
+
+**App structure (`mobile/app/`):**
+- `_layout.tsx` — root Stack (tabs + sign detail); onInit migration adds en/asl columns for stale cached DBs
+- `(tabs)/_layout.tsx` — bottom tab bar (Search / Browse / Themes)
+- `(tabs)/index.tsx` — search by Chinese or English (`meanings.text` / `meanings.en_text`)
+- `(tabs)/browse.tsx` — browse by letter (A–Z + #)
+- `(tabs)/themes.tsx` — browse by theme, grouped by difficulty tier
+- `sign/[id].tsx` — sign detail: image, Chinese + English word, hand-movement description (中/英), synonyms, other 打法 for the same word, and the ASL video section at the bottom
+- `db.ts` — expo-sqlite query helpers (search, by-letter, by-theme, sign detail, variants)
+- `components/SignImage.tsx` — resolves `image_path` via the generated asset map
+- `components/SignVideo.tsx` — resolves `asl_video_path` via the generated asset map; expo-video player (loop, muted, custom play/pause)
+- `components/SignListItem.tsx` — reusable list row (thumbnail + word + English)
+
+**Rebuild after data changes:**
+```bash
+python3 scripts/build_asl_videos.py     # re-transcode + re-match ASL videos (needs ffmpeg + ASL Data/)
+python3 mobile/scripts/build_data.py    # re-copy DB + images + videos + regenerate assets.ts
+cd mobile && npx expo start
+```
+
+Note `mobile/metro.config.js` adds `db` and `mp4` to `assetExts` so both the database and the videos bundle as assets. `mobile/AGENTS.md` requires consulting the versioned Expo docs (SDK 57) before writing app code — expo-video's `useVideoPlayer`/`VideoView`/`useEvent(player, 'playingChange')` are the API in use.
+
 ## Extending
+
 
 - **Adding another dictionary volume** — drop the EPUB in `DictionaryBook/`, add its number to `VOLUMES` at the top of `extract_epub.py`, rerun. Section detection is auto; no other code changes if its structure matches (single-letter `<h1 class="sect1">` + `<h2 class="sect2">` entries).
 - **Different book with different HTML shape** — write a new parser; do not try to generalize this one. The tight coupling to class names (`sect1`/`sect2`/`picture_figure`/`content`) is intentional.
