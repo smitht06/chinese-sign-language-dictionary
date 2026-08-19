@@ -1,6 +1,6 @@
 # Handoff Report — ASL Video Integration (for resuming with a new agent)
 
-> ✅ **COMPLETED 2026-08-19** — the task below is done. See "Completion notes" at the bottom; the only remaining manual step is tapping ▶ on a device to eyeball playback. This file is kept for reference only.
+> ✅ **COMPLETED, then removed from the app (2026-08-19)** — the video feature below was fully built and verified, then the app-side integration was removed by user request (preference: ASL pictures, not videos). The standalone script stays. See "Completion notes" at the bottom. This file is kept for reference only.
 
 **Date:** 2026-08-19
 **Goal:** Integrate the ASL-LEX dataset (86 short `.webm` videos) into the Expo React Native mobile app so each sign can show a 2-second ASL video clip.
@@ -148,4 +148,4 @@ cd mobile && npx expo start
 - **Bundling:** `mobile/scripts/build_data.py` copies `build/asl_videos/*.mp4` → `mobile/assets/data/asl_videos/`, sets `signs.asl_video_path`, emits `aslVideoAssets` in `lib/assets.ts`. `mobile/metro.config.js` adds `mp4` to `assetExts`. `.gitignore` now ignores `ASL Data/*` and `build/`.
 - **App:** `expo-video` ~57.0.2 installed; new `app/components/SignVideo.tsx` (loop, muted, custom play/pause via `useEvent(player, 'playingChange')`, ASL badge); `sign/[id].tsx` shows an "ASL video" section at the bottom; `db.ts` `SignRow`/`getSign` + `_layout.tsx` migration cover `asl_video_path`.
 - **Verified:** tsc clean; `expo export --platform ios` bundles all 78 mp4s; native build + launch on iPhone 17 simulator (fixed stale `NODE_BINARY` pin in `ios/.xcode.env.local` — brew upgraded node 22.22.3 → 22.23.2); deep-linked to sign 4683 (TREE) — detail screen renders the ASL video section with ▶ and badge; no video errors in runtime logs.
-- **Remaining manual step:** tap ▶ in the simulator to eyeball actual playback.
+- **Final outcome (2026-08-19):** app-side video integration was removed by user request (preference: ASL pictures, not videos). `expo-video`, `SignVideo.tsx`, `asl_video_path`, and the video bundling in `build_data.py` are gone from the app; docs now describe `build_asl_videos.py` as a standalone tool. The script + `build/asl_videos*` artifacts stay for future use. A follow-up PopSign + Long's 1910 ASL *picture* pipeline was later built and then reverted too ("too ambitious"); the manual `asl_images/` basename drop-in remains the only supported ASL picture mechanism.

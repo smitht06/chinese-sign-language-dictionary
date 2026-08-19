@@ -27,8 +27,7 @@
     "plugins": [
       "expo-router",
       "expo-sqlite",
-      "expo-font",
-      "expo-video"
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

@@ -5,7 +5,6 @@ export interface SignRow {
   id: number;
   image_path: string;
   asl_image_path: string | null;
-  asl_video_path: string | null;
   description: string;
   en_description: string | null;
   source_entry: string | null;
@@ -142,7 +141,7 @@ export async function getSign(
   id: number,
 ): Promise<SignRow | null> {
   return db.getFirstAsync<SignRow>(
-    `SELECT id, image_path, asl_image_path, asl_video_path, description, en_description, source_entry, letter, volume, theme
+    `SELECT id, image_path, asl_image_path, description, en_description, source_entry, letter, volume, theme
      FROM signs WHERE id = ?`,
     [id],
   );

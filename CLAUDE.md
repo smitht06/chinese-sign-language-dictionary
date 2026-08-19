@@ -17,7 +17,7 @@ sign-language-database/
 │   ├── add_theme_order.py     ← writes `themes` table (difficulty_rank, tier) into sign_themed.db
 │   ├── build_progression.py   ← reads sign_themed.db → emits 主题难度进阶.md
 │   ├── translate_en.py        ← DeepSeek API: adds English translations (en_text / en_description)
-│   └── build_asl_videos.py    ← ASL-LEX videos → H.264 mp4 + sign_id matches (build/asl_videos.json)
+│   └── build_asl_videos.py    ← ASL-LEX videos → H.264 mp4 + sign_id matches (standalone tool, app does not use)
 ├── ASL Data/            ← ASL-LEX dataset (86 .webm videos + signdata.csv); not committed
 ├── build/               ← transcoded mp4s + asl_videos.json + match audit log (generated)
 ├── images/               ← 6699 extracted sign images (v{N}_ prefixed)
@@ -77,7 +77,6 @@ The source EPUBs have a predictable shape per letter section. The parser exploit
 | `letter` | TEXT | 首字母分区 `A`–`Z` 或 `#`（其他） |
 | `volume` | INTEGER | 来自第几册（1–4） |
 | `asl_image_path` | TEXT / NULL | 可选 ASL 图片相对路径（`asl_images/...`）；由 `build_data.py` 写入，NULL 表示无 ASL 图 |
-| `asl_video_path` | TEXT / NULL | 可选 ASL 视频相对路径（`asl_videos/...`）；由 `build_data.py` 从 `build/asl_videos.json` 写入，NULL 表示无 ASL 视频 |
 
 
 ### `meanings` — one row per Chinese meaning; multiple rows may point to the same sign
@@ -201,7 +200,7 @@ An Expo React Native app (expo-router + expo-sqlite) that bundles the full datas
 
 **Optional ASL images:** if an `asl_images/` folder exists at the repo root, the build script also copies those into `mobile/assets/data/asl_images/`, sets `signs.asl_image_path` for signs whose `image_path` basename matches an ASL filename, and adds an `aslImageAssets` map to `assets.ts`. `SignImage` shows the ASL image (with an "ASL" badge) when `asl_image_path` is set, falling back to the CSL image otherwise.
 
-**Optional ASL videos (`scripts/build_asl_videos.py` + `build_data.py`):** the ASL-LEX dataset (`ASL Data/`, not committed) provides 86 short `.webm` videos. `build_asl_videos.py` transcodes each to H.264 `.mp4` (iOS can't play VP8/WebM) into `build/asl_videos/`, matches each to a `sign_id` by English word, and writes `build/asl_videos.json` (sign_id → `WORD.mp4`) plus the audit log `build/asl_videos_match.log`. Matching priority: manual overrides (`MANUAL_MATCHES`) → exact `meanings.en_text` → exact CSV synonyms (`SignBankEnglishTranslations` / `DominantTranslation`) → token-boundary fuzzy (a full token of the video word must appear in an `en_text` term). Two deliberate guardrails: `en_description` is never used for matching (generic verbs cause false-positive clusters), and untranslated-Chinese `en_text` rows are skipped (their normalized form is `""`, which substring-matched everything). Then `build_data.py` copies the matched mp4s into `mobile/assets/data/asl_videos/`, sets `signs.asl_video_path`, and emits an `aslVideoAssets` map. `SignVideo` (expo-video) renders the clip at the bottom of the detail screen with an "ASL" badge and a play/pause toggle; it renders nothing when the sign has no video.
+**ASL videos (standalone tool, NOT used by the app):** `scripts/build_asl_videos.py` works with the ASL-LEX dataset (`ASL Data/`, not committed; 86 short `.webm` videos) and transcodes each to H.264 `.mp4` (iOS can't play VP8/WebM) into `build/asl_videos/`, matches each to a `sign_id` by English word, and writes `build/asl_videos.json` (sign_id → `WORD.mp4`) plus the audit log `build/asl_videos_match.log`. Matching priority: manual overrides (`MANUAL_MATCHES`) → exact `meanings.en_text` → exact CSV synonyms (`SignBankEnglishTranslations` / `DominantTranslation`) → token-boundary fuzzy (a full token of the video word must appear in an `en_text` term). Two deliberate guardrails: `en_description` is never used for matching (generic verbs cause false-positive clusters), and untranslated-Chinese `en_text` rows are skipped (their normalized form is `""`, which substring-matched everything). The app-side video integration was built then removed by user request (preference: ASL pictures, not videos) — the script stays for future use.
 
 
 **App structure (`mobile/app/`):**
@@ -210,20 +209,18 @@ An Expo React Native app (expo-router + expo-sqlite) that bundles the full datas
 - `(tabs)/index.tsx` — search by Chinese or English (`meanings.text` / `meanings.en_text`)
 - `(tabs)/browse.tsx` — browse by letter (A–Z + #)
 - `(tabs)/themes.tsx` — browse by theme, grouped by difficulty tier
-- `sign/[id].tsx` — sign detail: image, Chinese + English word, hand-movement description (中/英), synonyms, other 打法 for the same word, and the ASL video section at the bottom
+- `sign/[id].tsx` — sign detail: image, Chinese + English word, hand-movement description (中/英), synonyms, other 打法 for the same word
 - `db.ts` — expo-sqlite query helpers (search, by-letter, by-theme, sign detail, variants)
 - `components/SignImage.tsx` — resolves `image_path` via the generated asset map
-- `components/SignVideo.tsx` — resolves `asl_video_path` via the generated asset map; expo-video player (loop, muted, custom play/pause)
 - `components/SignListItem.tsx` — reusable list row (thumbnail + word + English)
 
 **Rebuild after data changes:**
 ```bash
-python3 scripts/build_asl_videos.py     # re-transcode + re-match ASL videos (needs ffmpeg + ASL Data/)
-python3 mobile/scripts/build_data.py    # re-copy DB + images + videos + regenerate assets.ts
+python3 mobile/scripts/build_data.py    # re-copy DB + images + regenerate assets.ts
 cd mobile && npx expo start
 ```
 
-Note `mobile/metro.config.js` adds `db` and `mp4` to `assetExts` so both the database and the videos bundle as assets. `mobile/AGENTS.md` requires consulting the versioned Expo docs (SDK 57) before writing app code — expo-video's `useVideoPlayer`/`VideoView`/`useEvent(player, 'playingChange')` are the API in use.
+Note `mobile/metro.config.js` adds `db` to `assetExts` so the database bundles as an asset. `mobile/AGENTS.md` requires consulting the versioned Expo docs (SDK 57) before writing app code.
 
 ## Extending
 

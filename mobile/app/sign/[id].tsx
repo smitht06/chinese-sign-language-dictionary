@@ -16,7 +16,6 @@ import {
 
 import SignImage from "../components/SignImage";
 import SignListItem from "../components/SignListItem";
-import SignVideo from "../components/SignVideo";
 
 export default function SignDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -121,13 +120,6 @@ export default function SignDetailScreen() {
           {variants.map((v) => (
             <SignListItem key={v.sign_id} item={v} />
           ))}
-        </View>
-      ) : null}
-
-      {sign.asl_video_path ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ASL video</Text>
-          <SignVideo videoPath={sign.asl_video_path} />
         </View>
       ) : null}
     </ScrollView>

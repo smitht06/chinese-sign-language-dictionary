@@ -24,9 +24,6 @@ async function migrateDbIfNeeded(db: SQLiteDatabase) {
   if (!signCols.some((c) => c.name === "asl_image_path")) {
     await db.execAsync("ALTER TABLE signs ADD COLUMN asl_image_path TEXT");
   }
-  if (!signCols.some((c) => c.name === "asl_video_path")) {
-    await db.execAsync("ALTER TABLE signs ADD COLUMN asl_video_path TEXT");
-  }
 
   const meaningCols = await db.getAllAsync<{ name: string }>(
     "PRAGMA table_info(meanings)",

@@ -25,7 +25,7 @@
 | `images/` | 6699 张手势图（PNG/JPG），~350 MB |
 | `scripts/extract_epub.py` | 抽取管线，Python 3 stdlib，无外部依赖 |
 | `scripts/translate_en.py` | 用 DeepSeek API 为全部词条/打法添加英文翻译 |
-| `scripts/build_asl_videos.py` | 将 ASL-LEX 视频转码为 H.264 并按英文词匹配到手势 |
+| `scripts/build_asl_videos.py` | 独立工具：将 ASL-LEX 视频转码为 H.264 并按英文词匹配到手势（App 不使用） |
 | `mobile/` | Expo React Native 离线 App（搜索 / 字母浏览 / 主题浏览） |
 | `CLAUDE.md` | 架构文档：schema、数据形态、解析决策、常用查询 |
 
@@ -92,7 +92,6 @@ python3 scripts/translate_en.py --only descriptions  # 只翻译打法
 - **主题浏览** — 按 `sign_themed.db` 的难度分级（入门→高级）
 - **手势详情** — 大图、中文词、英文翻译、打法描述（中英）、同义词、同词不同打法
 - **ASL 图片（可选）** — 将美国手语（ASL）图片放入 `asl_images/`，App 会为匹配的手势显示 ASL 图（带 "ASL" 角标），否则回退到中文手语图
-- **ASL 视频（可选）** — 为有 ASL-LEX 视频的手势在详情页底部显示 2 秒 ASL 演示视频（带 "ASL" 角标与播放按钮）
 
 **构建与运行：**
 
@@ -107,6 +106,8 @@ npx expo start
 ```
 
 > 打包后的数据（`mobile/assets/data/` 与 `mobile/app/assets.ts`）由构建脚本生成，已加入 `.gitignore`，不提交到仓库。
+>
+> 注意：App 只在**首次启动**时把内置数据库复制到本地，数据更新后需要卸载重装 App 才会生效。
 
 ### 添加 ASL 手势图片
 
@@ -122,25 +123,12 @@ python3 mobile/scripts/build_data.py
 
 构建脚本会把 ASL 图片复制进 App 资源包、为匹配的手势写入 `signs.asl_image_path`，并重新生成资源映射。手势详情页随后会显示带 "ASL" 角标的 ASL 图。无需改动 App 代码。
 
-### 添加 ASL 手势视频
+### ASL 手势视频（独立工具，App 不使用）
 
-App 支持在详情页**底部**为有 ASL 视频的手势显示一段 2 秒演示视频（不替换顶部图片）。视频来自 [ASL-LEX](https://asl-lex.org/) 数据集：
+`scripts/build_asl_videos.py` 作为独立工具保留：把 [ASL-LEX](https://asl-lex.org/) 数据集的 `.webm` 视频转码为 H.264 `.mp4` 并按英文词匹配到 `sign_themed.db` 的手势，产出 `build/asl_videos.json` 与审计日志 `build/asl_videos_match.log`。App 内曾集成视频播放，后按用户偏好移除（改为 ASL 图片方案），脚本留作以后使用。
 
-1. 在仓库根目录放置 `ASL Data/`（`ASL examples/*.webm` + `Data Files/signdata.csv`）。
-2. 运行视频准备脚本（需要 ffmpeg，用于把 iOS 不支持的 WebM 转码为 H.264）：
-
-   ```bash
-   python3 scripts/build_asl_videos.py
-   ```
-
-   该脚本转码全部 `.webm` → `build/asl_videos/*.mp4`，并按其英文词（精确匹配 `meanings.en_text` → CSV 同义词 → 词边界模糊匹配）匹配到 `sign_themed.db` 的手势，产出 `build/asl_videos.json`（sign_id → 视频文件）与审计日志 `build/asl_videos_match.log`。
-
-3. 重新运行打包脚本：
-
-   ```bash
-   python3 mobile/scripts/build_data.py
-   ```
-
-   打包脚本会把匹配的视频复制进 App 资源包、写入 `signs.asl_video_path`，并重新生成资源映射。详情页随后会在底部显示带播放按钮的 ASL 视频。
+```bash
+python3 scripts/build_asl_videos.py   # 需要 ffmpeg + ASL Data/ 数据集
+```
 
 
