@@ -33,6 +33,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "export:web": "expo export --platform web && python3 scripts/post_export_web.py",
     "test": "jest",
     "test:watch": "jest --watchAll",
     "eas-build-pre-install": "command -v python3 >/dev/null 2>&1 || { echo 'ERROR: python3 not found on EAS build image (needed by scripts/build_data.py)'; exit 1; }; python3 scripts/build_data.py"

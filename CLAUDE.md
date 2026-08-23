@@ -288,13 +288,15 @@ First-time setup (user-run, needs an Expo account): `npm install -g eas-cli` →
 The mobile app also builds as a fully static website — same codebase, no server, $0 hosting.
 
 ```bash
-cd mobile && npx expo export --platform web   # emits dist/ (web.output: "static" in app.json)
+cd mobile && npm run export:web   # expo export + post_export_web.py, emits dist/
 ```
+
+`post_export_web.py` is load-bearing: **Cloudflare Pages skips any directory named `node_modules` during upload**, so Metro's asset output `dist/assets/node_modules/...` (the wa-sqlite wasm the sqlite web worker fetches, plus expo-router UI icons) would silently 404 into the SPA fallback HTML and the app would render nothing. The script moves that tree to `dist/assets/vendor/` and rewrites the `/assets/node_modules/...` URLs in the exported JS. Always deploy through the npm script, never a bare `expo export`.
 
 Deploy `dist/` to Cloudflare Pages (free tier): `npx wrangler pages deploy dist`. Two files in `mobile/public/` are copied into the output:
 
 - `_headers` — COOP/COEP headers. Required: expo-sqlite's web build (wa-sqlite wasm, **alpha**) needs `SharedArrayBuffer`.
-- `_redirects` — `/sign/*` deep links → the client-rendered `sign/[id].html` shell.
+- `_redirects` — `/* /index.html 200` SPA fallback: deep links like `/sign/31` get the app shell at their original URL and the client router resolves the route. Real files take precedence.
 
 Setup specifics: `metro.config.js` pushes `wasm` to `assetExts` so the sqlite worker's wasm gets a stable URL; `@expo/metro-runtime` is a direct dependency because the SSR bundler imports it. If the alpha sqlite web support misbehaves, the fallback is swapping `lib/db.ts` for a JSON-backed implementation behind the same function signatures.
 
