@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Text } from "react-native";
+import { Platform, Text } from "react-native";
 
 export default function TabsLayout() {
   return (
@@ -7,6 +7,10 @@ export default function TabsLayout() {
       screenOptions={{
         tabBarActiveTintColor: "#1a73e8",
         headerTitleAlign: "center",
+        // Web shows the site top nav (root layout) instead of per-tab
+        // headers + the bottom bar; native keeps both.
+        headerShown: Platform.OS !== "web",
+        tabBarStyle: Platform.OS === "web" ? { display: "none" } : undefined,
       }}
     >
       <Tabs.Screen

@@ -39,16 +39,16 @@ const styles = StyleSheet.create({
     padding: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#ddd",
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.9)",
   },
   pressed: {
-    backgroundColor: "#f0f0f0",
+    backgroundColor: "rgba(240,240,240,0.9)",
   },
   thumb: {
     width: 56,
     height: 56,
     borderRadius: 6,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "rgba(245,245,245,0.9)",
   },
   info: {
     flex: 1,
@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 12,
     color: "#888",
-    backgroundColor: "#f0f0f0",
+    backgroundColor: "rgba(240,240,240,0.9)",
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 1,

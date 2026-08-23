@@ -81,7 +81,7 @@ export default function BrowseScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.9)",
     // Cap content width on wide screens (web); no-op on phones.
     width: "100%",
     maxWidth: 640,
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     margin: 2,
     borderRadius: 8,
-    backgroundColor: "#f0f0f0",
+    backgroundColor: "rgba(240,240,240,0.9)",
   },
   cellActive: {
     backgroundColor: "#1a73e8",
@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 14,
     color: "#666",
-    backgroundColor: "#fafafa",
+    backgroundColor: "rgba(250,250,250,0.9)",
   },
   empty: {
     padding: 24,

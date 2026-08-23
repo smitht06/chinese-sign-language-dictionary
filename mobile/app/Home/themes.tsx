@@ -105,7 +105,7 @@ export default function ThemesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.9)",
     // Cap content width on wide screens (web); no-op on phones.
     width: "100%",
     maxWidth: 640,
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: "#f0f0f0",
+    backgroundColor: "rgba(240,240,240,0.9)",
     marginRight: 8,
     marginBottom: 8,
   },
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 14,
     color: "#666",
-    backgroundColor: "#fafafa",
+    backgroundColor: "rgba(250,250,250,0.9)",
   },
 });
 

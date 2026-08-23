@@ -65,7 +65,7 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.9)",
     // Cap content width on wide screens (web); no-op on phones.
     width: "100%",
     maxWidth: 640,
@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
     borderColor: "#ccc",
     borderRadius: 10,
     fontSize: 16,
-    backgroundColor: "#fafafa",
+    backgroundColor: "rgba(250,250,250,0.9)",
   },
   empty: {
     flex: 1,
