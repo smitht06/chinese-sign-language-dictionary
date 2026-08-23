@@ -1,3 +1,4 @@
-# Dynamic sign-detail routes have no HTML file of their own; serve the
-# client-rendered shell so deep links like /sign/123 work.
-/sign/*  /sign/[id].html  200
+# SPA fallback: unmatched paths (e.g. /sign/31 deep links) get the app
+# shell at their original URL; the client router resolves the route.
+# Real files still take precedence, so static per-route HTML keeps working.
+/*  /index.html  200
