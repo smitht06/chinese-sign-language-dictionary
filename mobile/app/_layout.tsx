@@ -2,8 +2,19 @@ import { DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SQLiteProvider, type SQLiteDatabase } from "expo-sqlite";
 import { Platform, StyleSheet, View } from "react-native";
+import { enableScreens } from "react-native-screens";
 import Watermark from "./components/Watermark";
 import WebTopNav from "./components/WebTopNav";
+
+// On web, react-native-screens reports screensEnabled() === false, so
+// react-navigation's tab fallback renders inactive scenes as plain,
+// always-visible Views. With translucent screen surfaces, every visited
+// tab stays visible under the active one ("ghost" content). Enabling
+// screens makes the web Screen honor activityState, hiding inactive
+// scenes with display:none. Native is already enabled by default.
+if (Platform.OS === "web") {
+  enableScreens(true);
+}
 
 // Bundled dictionary DB (copied by mobile/scripts/build_data.py).
 
