@@ -130,6 +130,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
+    // Cap content width on wide screens (web); no-op on phones.
+    width: "100%",
+    maxWidth: 640,
+    alignSelf: "center",
   },
   content: {
     paddingBottom: 40,

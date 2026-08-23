@@ -51,6 +51,7 @@ export default function SearchScreen() {
         </View>
       ) : (
         <FlatList
+          style={styles.list}
           data={results}
           keyExtractor={(item) => `${item.sign_id}-${item.text}`}
           renderItem={({ item }) => <SignListItem item={item} />}
@@ -65,6 +66,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
+    // Cap content width on wide screens (web); no-op on phones.
+    width: "100%",
+    maxWidth: 640,
+    alignSelf: "center",
+  },
+  list: {
+    flex: 1,
   },
   input: {
     margin: 12,

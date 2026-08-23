@@ -50,6 +50,7 @@ export default function ThemesScreen() {
   return (
     <View style={styles.container}>
       <FlatList
+        style={styles.list}
         data={tiers}
         keyExtractor={(t) => t.tier}
         ListHeaderComponent={
@@ -105,6 +106,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
+    // Cap content width on wide screens (web); no-op on phones.
+    width: "100%",
+    maxWidth: 640,
+    alignSelf: "center",
+  },
+  list: {
+    flex: 1,
   },
   title: {
     fontSize: 18,

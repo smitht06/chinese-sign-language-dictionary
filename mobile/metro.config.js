@@ -7,4 +7,8 @@ const config = getDefaultConfig(__dirname);
 // copy the dictionary database into the app at runtime.
 config.resolver.assetExts.push("db");
 
+// expo-sqlite on web ships a wasm build (wa-sqlite) that its worker fetches
+// at runtime; emit .wasm files as static assets so they get a stable URL.
+config.resolver.assetExts.push("wasm");
+
 module.exports = config;

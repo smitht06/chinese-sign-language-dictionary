@@ -59,6 +59,7 @@ export default function BrowseScreen() {
         ))}
       </View>
       <FlatList
+        style={styles.list}
         data={items}
         keyExtractor={(item) => `${item.sign_id}-${item.text}`}
         renderItem={({ item }) => <SignListItem item={item} />}
@@ -81,6 +82,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
+    // Cap content width on wide screens (web); no-op on phones.
+    width: "100%",
+    maxWidth: 640,
+    alignSelf: "center",
+  },
+  list: {
+    flex: 1,
   },
   grid: {
     flexDirection: "row",
@@ -91,6 +99,7 @@ const styles = StyleSheet.create({
   },
   cell: {
     width: "12.5%",
+    maxWidth: 56,
     aspectRatio: 1,
     alignItems: "center",
     justifyContent: "center",

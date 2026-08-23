@@ -282,3 +282,20 @@ Key facts:
 - **Build from committed state** — commit everything before `eas build`.
 
 First-time setup (user-run, needs an Expo account): `npm install -g eas-cli` → `cd mobile && eas login` → `eas init` (writes `extra.eas.projectId` into `app.json` — commit it) → `eas build --profile preview --platform android` (accept the one-time keystore prompt) / `--platform ios` → `npx eas build:run --platform ios --profile preview` installs + launches the simulator build.
+
+## Web export (static, Cloudflare Pages)
+
+The mobile app also builds as a fully static website — same codebase, no server, $0 hosting.
+
+```bash
+cd mobile && npx expo export --platform web   # emits dist/ (web.output: "static" in app.json)
+```
+
+Deploy `dist/` to Cloudflare Pages (free tier): `npx wrangler pages deploy dist`. Two files in `mobile/public/` are copied into the output:
+
+- `_headers` — COOP/COEP headers. Required: expo-sqlite's web build (wa-sqlite wasm, **alpha**) needs `SharedArrayBuffer`.
+- `_redirects` — `/sign/*` deep links → the client-rendered `sign/[id].html` shell.
+
+Setup specifics: `metro.config.js` pushes `wasm` to `assetExts` so the sqlite worker's wasm gets a stable URL; `@expo/metro-runtime` is a direct dependency because the SSR bundler imports it. If the alpha sqlite web support misbehaves, the fallback is swapping `lib/db.ts` for a JSON-backed implementation behind the same function signatures.
+
+**Web-only layout conventions** (keep when editing screens): every list gets explicit `style={{ flex: 1 }}` — react-native-web's default `flex: 1 1 auto` basis collapses a content-height list to a sliver inside `body{overflow:hidden}` — and each screen container uses `width: "100%", maxWidth: 640, alignSelf: "center"` so desktop shows a centered column while phones stay full-bleed. Native behavior is unaffected by both.
