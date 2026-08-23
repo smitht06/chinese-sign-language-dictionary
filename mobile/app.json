@@ -14,7 +14,10 @@
     "scheme": "signlang",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.example.signlang"
+      "bundleIdentifier": "com.example.signlang",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.example.signlang",
@@ -36,6 +39,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "594f68b1-20e9-43db-8924-5f3ca34e38bd"
+      }
+    },
+    "owner": "redcyberdragon"
   }
 }

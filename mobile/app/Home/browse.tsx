@@ -17,7 +17,7 @@ const LETTERS = [
 
 export default function BrowseScreen() {
   const { getSignsByLetter } = useDb();
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string>("A");
   const [items, setItems] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -32,9 +32,7 @@ export default function BrowseScreen() {
   );
 
   useEffect(() => {
-    if (selected) {
-      load(selected);
-    }
+    load(selected);
   }, [selected, load]);
 
   return (
@@ -60,27 +58,21 @@ export default function BrowseScreen() {
           </Pressable>
         ))}
       </View>
-      {selected ? (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => `${item.sign_id}-${item.text}`}
-          renderItem={({ item }) => <SignListItem item={item} />}
-          ListHeaderComponent={
-            <Text style={styles.header}>
-              {selected === "#" ? "Other" : `Letter ${selected}`} · {items.length} signs
-            </Text>
-          }
-          ListEmptyComponent={
-            loading ? null : (
-              <Text style={styles.empty}>No signs for this letter.</Text>
-            )
-          }
-        />
-      ) : (
-        <View style={styles.hint}>
-          <Text style={styles.hintText}>Select a letter to browse signs.</Text>
-        </View>
-      )}
+      <FlatList
+        data={items}
+        keyExtractor={(item) => `${item.sign_id}-${item.text}`}
+        renderItem={({ item }) => <SignListItem item={item} />}
+        ListHeaderComponent={
+          <Text style={styles.header}>
+            {selected === "#" ? "Other" : `Letter ${selected}`} · {items.length} signs
+          </Text>
+        }
+        ListEmptyComponent={
+          loading ? null : (
+            <Text style={styles.empty}>No signs for this letter.</Text>
+          )
+        }
+      />
     </View>
   );
 }
@@ -127,15 +119,6 @@ const styles = StyleSheet.create({
     padding: 24,
     textAlign: "center",
     color: "#888",
-  },
-  hint: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  hintText: {
-    color: "#888",
-    fontSize: 16,
   },
 });
 

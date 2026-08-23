@@ -42,7 +42,7 @@ export default function RootLayout() {
     >
       <StatusBar style="auto" />
       <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="Home" options={{ headerShown: false }} />
         <Stack.Screen name="sign/[id]" options={{ title: "Sign" }} />
       </Stack>
     </SQLiteProvider>
