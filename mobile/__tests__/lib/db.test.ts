@@ -10,8 +10,6 @@ import {
 } from "../../lib/db";
 import { TREE_MEANINGS, TREE_RESULT, TREE_SIGN } from "../helpers/mockDb";
 
-jest.mock("expo-sqlite", () => ({ useSQLiteContext: jest.fn() }));
-
 /** Minimal SQLiteDatabase stub — only the methods lib/db.ts calls. */
 function fakeDb() {
   return {

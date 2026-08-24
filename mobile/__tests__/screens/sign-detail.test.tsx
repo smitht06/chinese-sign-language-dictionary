@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import path from "node:path";
 import { renderRouter, screen } from "expo-router/testing-library";
 import {
@@ -14,10 +13,6 @@ import {
 // file — an absolute path keeps this working no matter where jest is invoked.
 const APP_DIR = path.join(__dirname, "..", "..", "app");
 
-jest.mock("expo-sqlite", () => ({
-  SQLiteProvider: ({ children }: { children?: ReactNode }) => children,
-  useSQLiteContext: jest.fn(),
-}));
 jest.mock("../../lib/db", () => require("../helpers/mockDb"));
 // (lib/assets is generated + gitignored; moduleNameMapper stubs it globally.)
 

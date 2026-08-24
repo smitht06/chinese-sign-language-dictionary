@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import path from "node:path";
 import { act, fireEvent, renderRouter, screen } from "expo-router/testing-library";
 import { resetMockDb, searchSigns, TREE_RESULT } from "../helpers/mockDb";
@@ -7,11 +6,6 @@ import { resetMockDb, searchSigns, TREE_RESULT } from "../helpers/mockDb";
 // file — an absolute path keeps this working no matter where jest is invoked.
 const APP_DIR = path.join(__dirname, "..", "..", "app");
 
-// SQLiteProvider becomes a passthrough; the DB asset is never opened in tests.
-jest.mock("expo-sqlite", () => ({
-  SQLiteProvider: ({ children }: { children?: ReactNode }) => children,
-  useSQLiteContext: jest.fn(),
-}));
 // Screens import useDb from lib/db — swap in the shared mock.
 // (lib/assets is generated + gitignored; moduleNameMapper stubs it globally.)
 jest.mock("../../lib/db", () => require("../helpers/mockDb"));

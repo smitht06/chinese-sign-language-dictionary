@@ -1,4 +1,5 @@
 import { Link, usePathname } from "expo-router";
+import { useEffect, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 
 type NavKey = "search" | "browse" | "themes";
@@ -42,8 +43,17 @@ export function getActiveNavItem(pathname: string): NavKey | null {
  */
 export default function WebTopNav() {
   const pathname = usePathname();
+  // Client-only mount: never SSR'd, never hydrated from shell DOM. When a
+  // deep link is served via the SPA fallback (e.g. /sign/31 → the root
+  // index.html shell), the shell's SSR'd nav is highlighted for the WRONG
+  // route and React's hydration reuses its <a> nodes, leaving the highlight
+  // permanently stuck on the shell's route. Rendering nothing until after
+  // hydration means there is no nav DOM to corrupt; we then mount it fresh
+  // with the correct routeInfo from the router store.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  if (Platform.OS !== "web") {
+  if (!mounted || Platform.OS !== "web") {
     return null;
   }
 

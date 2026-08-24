@@ -49,6 +49,7 @@
     ],
     "moduleNameMapper": {
       "\\.db$": "<rootDir>/__tests__/__mocks__/dbAssetMock.js",
+      "^expo-sqlite$": "<rootDir>/__tests__/__mocks__/expoSqliteMock.js",
       "lib/assets$": "<rootDir>/__tests__/__mocks__/libAssetsMock.js"
     }
   },
