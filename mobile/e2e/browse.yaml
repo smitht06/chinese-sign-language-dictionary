@@ -10,17 +10,16 @@ appId: com.example.signlang
     timeout: 60000
 # Tab buttons expose combined labels ("Browse, tab, 2 of 3") — match the prefix.
 - tapOn: "Browse.*"
-- assertVisible: "Select a letter to browse signs."
 - tapOn:
     text: "^A$"
-# 丈夫 is the first row for letter A (rows ordered by Chinese text).
+# 丈夫 is near the top of letter A (rows in book order; it belongs to 爱人, sign 31).
 - extendedWaitUntil:
     visible:
       text: "丈夫, husband.*"
       index: 0
     timeout: 10000
 - assertVisible:
-    text: "Letter A · .* signs"
+    text: "Letter A · .* words"
     index: 0
 - tapOn:
     text: "丈夫, husband.*"

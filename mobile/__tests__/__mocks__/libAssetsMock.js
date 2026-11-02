@@ -2,6 +2,7 @@
 // scripts/build_data.py). Mapped via moduleNameMapper so tests pass on fresh
 // clones where the file doesn't exist. Keys are image paths the tests use.
 module.exports = {
+  DB_NAME: "dictionary-test.db",
   imageAssets: {
     "images/v3_txttree_1.jpg": 1,
     "images/test.png": 2,

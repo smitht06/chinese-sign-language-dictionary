@@ -9,16 +9,23 @@ Adds English translations to a copy of the dictionary DB:
 The script is resumable: it only translates rows whose target column is NULL,
 and commits per batch, so an interrupted run can be re-run to finish the rest.
 
+Outputs are validated before being stored: an empty string, an echo of the
+Chinese input, or text that is still mostly CJK is rejected and the row is
+left NULL for the next run. `--redo-invalid` also re-selects rows stored by
+older runs that fail that validation (e.g. the model echoed the Chinese back).
+
 Usage:
     export DEEPSEEK_API_KEY=sk-...
     python3 scripts/translate_en.py [--db sign_themed.db] [--model deepseek-chat]
                                     [--batch 20] [--only meanings|descriptions]
+                                    [--redo-invalid]
 
 Stdlib only (urllib). No external dependencies.
 """
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -64,19 +71,13 @@ def get_api_key() -> str:
     return key
 
 
-def call_deepseek(
-    api_key: str,
-    model: str,
-    system: str,
-    items: list[str],
-    join_extra: bool = False,
-) -> list[str]:
+def call_deepseek(api_key: str, model: str, system: str, items: list[str]) -> list[str]:
     """Translate a batch of items. Returns a list of translations aligned to `items`.
 
-    If `join_extra` is True and the model returns MORE elements than input items
-    (e.g. it splits a multi-step description into separate array elements), the
-    extra elements are joined back onto the preceding item with newlines. This
-    keeps the output aligned to the input.
+    Any length mismatch raises ValueError (retried by retry_call). Extra
+    elements are NOT merged back: there is no way to know which input item the
+    model split, and appending them to the last item silently shifted every
+    later translation onto the wrong row.
     """
     payload = {
         "model": model,
@@ -110,27 +111,62 @@ def call_deepseek(
     if not isinstance(parsed, list):
         raise ValueError(f"Unexpected response shape: {content[:200]}")
     if len(parsed) != len(items):
-        if join_extra and len(parsed) > len(items):
-            # Model split some items into multiple elements; merge extras back.
-            merged: list[str] = []
-            for el in parsed:
-                if len(merged) < len(items):
-                    merged.append(str(el).strip())
-                else:
-                    merged[-1] = merged[-1] + "\n" + str(el).strip()
-            return merged
         raise ValueError(
             f"Expected {len(items)} translations, got {len(parsed)}: {content[:200]}"
         )
     return [str(x).strip() for x in parsed]
 
 
-def retry_call(api_key, model, system, items, max_retries=5, join_extra=False):
+CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+
+
+def is_valid_translation(source: str, en: str) -> bool:
+    """Reject empty output, echoes of the source, and still-mostly-CJK text.
+
+    Echo check applies only to CJK sources: ASCII entries from the 其他
+    section (3D, KTV, QQ, 100…) legitimately translate to themselves.
+    A few CJK chars are tolerated (descriptions may quote a character being
+    traced, e.g. 书空“人”字), but >20% of non-space chars means untranslated.
+    """
+    en = en.strip()
+    if not en:
+        return False
+    if en == source.strip() and CJK.search(source):
+        return False
+    chars = [c for c in en if not c.isspace()]
+    cjk = sum(1 for c in chars if CJK.match(c))
+    return cjk / len(chars) <= 0.2
+
+
+def translate_batch(api_key, model, system, texts):
+    """Translate a batch; on persistent failure fall back to one item per call.
+
+    Returns a list aligned to `texts`, with None for items that could not be
+    translated (left NULL in the DB so a later run retries them).
+    """
+    try:
+        return retry_call(api_key, model, system, texts)
+    except Exception as e:  # noqa: BLE001
+        if len(texts) == 1:
+            print(f"  item failed: {e}", file=sys.stderr)
+            return [None]
+        print(f"  batch failed ({e}); retrying items one by one", file=sys.stderr)
+    out = []
+    for t in texts:
+        try:
+            out.append(retry_call(api_key, model, system, [t], max_retries=3)[0])
+        except Exception as e:  # noqa: BLE001
+            print(f"  item failed: {e}", file=sys.stderr)
+            out.append(None)
+    return out
+
+
+def retry_call(api_key, model, system, items, max_retries=5):
     """Call DeepSeek with exponential backoff on rate-limit / transient errors."""
     delay = 2.0
     for attempt in range(max_retries):
         try:
-            return call_deepseek(api_key, model, system, items, join_extra=join_extra)
+            return call_deepseek(api_key, model, system, items)
 
         except urllib.error.HTTPError as e:
             if e.code == 429:
@@ -182,71 +218,58 @@ def ensure_schema(con: sqlite3.Connection):
     con.commit()
 
 
-def translate_meanings(con, api_key, model, batch_size):
+def _translate_pass(con, api_key, model, batch_size, *, kind, table, src_col,
+                    dst_col, system, redo_invalid):
     cur = con.cursor()
-    rows = cur.execute(
-        "SELECT id, text FROM meanings WHERE en_text IS NULL ORDER BY id"
-    ).fetchall()
-    print(f"meanings to translate: {len(rows)}")
-    done = 0
+    rows = [
+        (rid, src)
+        for rid, src, en in cur.execute(
+            f"SELECT id, {src_col}, {dst_col} FROM {table} ORDER BY id"
+        ).fetchall()
+        if en is None or (redo_invalid and not is_valid_translation(src, en))
+    ]
+    print(f"{table} to translate: {len(rows)}")
+    done = rejected = 0
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
-        texts = [r[1] for r in batch]
-        try:
-            translations = retry_call(api_key, model, MEANINGS_SYSTEM, texts)
-        except Exception as e:
-            print(f"  batch {i//batch_size} failed: {e}", file=sys.stderr)
-            print("  run the script again to resume from where it left off.")
-            break
-        for (mid, _), en in zip(batch, translations):
-            cur.execute(
-                "UPDATE meanings SET en_text=? WHERE id=?",
-                (en, mid),
-            )
+        translations = translate_batch(api_key, model, system, [r[1] for r in batch])
+        for (rid, src), en in zip(batch, translations):
+            if en is None or not is_valid_translation(src, en):
+                # Leave NULL (and clear an old echo) so the next run retries it.
+                rejected += 1
+                cur.execute(f"UPDATE {table} SET {dst_col}=NULL WHERE id=?", (rid,))
+                cur.execute(
+                    "DELETE FROM translations WHERE kind=? AND source_id=?", (kind, rid)
+                )
+                continue
+            cur.execute(f"UPDATE {table} SET {dst_col}=? WHERE id=?", (en, rid))
             cur.execute(
                 "INSERT OR REPLACE INTO translations(kind, source_id, model, status) "
-                "VALUES ('meaning', ?, ?, 'done')",
-                (mid, model),
+                "VALUES (?, ?, ?, 'done')",
+                (kind, rid, model),
             )
+            done += 1
         con.commit()
-        done += len(batch)
-        print(f"  meanings: {done}/{len(rows)}")
+        print(f"  {table}: {i + len(batch)}/{len(rows)} ({rejected} rejected)")
+    if rejected:
+        print(f"  {rejected} {table} rows left NULL — run the script again to retry.")
     return done
 
 
-def translate_descriptions(con, api_key, model, batch_size):
-    cur = con.cursor()
-    rows = cur.execute(
-        "SELECT id, description FROM signs WHERE en_description IS NULL ORDER BY id"
-    ).fetchall()
-    print(f"descriptions to translate: {len(rows)}")
-    done = 0
-    for i in range(0, len(rows), batch_size):
-        batch = rows[i : i + batch_size]
-        texts = [r[1] for r in batch]
-        try:
-            translations = retry_call(
-                api_key, model, DESCRIPTIONS_SYSTEM, texts, join_extra=True
-            )
-        except Exception as e:
-            print(f"  batch {i//batch_size} failed: {e}", file=sys.stderr)
-            print("  run the script again to resume from where it left off.")
-            break
+def translate_meanings(con, api_key, model, batch_size, redo_invalid=False):
+    return _translate_pass(
+        con, api_key, model, batch_size, kind="meaning", table="meanings",
+        src_col="text", dst_col="en_text", system=MEANINGS_SYSTEM,
+        redo_invalid=redo_invalid,
+    )
 
-        for (sid, _), en in zip(batch, translations):
-            cur.execute(
-                "UPDATE signs SET en_description=? WHERE id=?",
-                (en, sid),
-            )
-            cur.execute(
-                "INSERT OR REPLACE INTO translations(kind, source_id, model, status) "
-                "VALUES ('sign', ?, ?, 'done')",
-                (sid, model),
-            )
-        con.commit()
-        done += len(batch)
-        print(f"  descriptions: {done}/{len(rows)}")
-    return done
+
+def translate_descriptions(con, api_key, model, batch_size, redo_invalid=False):
+    return _translate_pass(
+        con, api_key, model, batch_size, kind="sign", table="signs",
+        src_col="description", dst_col="en_description",
+        system=DESCRIPTIONS_SYSTEM, redo_invalid=redo_invalid,
+    )
 
 
 def main():
@@ -266,6 +289,11 @@ def main():
         choices=["meanings", "descriptions"],
         help="Translate only one pass (default: both)",
     )
+    parser.add_argument(
+        "--redo-invalid",
+        action="store_true",
+        help="Also retranslate stored rows that fail validation (e.g. Chinese echoed back)",
+    )
     args = parser.parse_args()
 
     api_key = get_api_key()
@@ -273,9 +301,9 @@ def main():
     ensure_schema(con)
 
     if args.only in (None, "meanings"):
-        translate_meanings(con, api_key, args.model, args.batch)
+        translate_meanings(con, api_key, args.model, args.batch, args.redo_invalid)
     if args.only in (None, "descriptions"):
-        translate_descriptions(con, api_key, args.model, args.batch)
+        translate_descriptions(con, api_key, args.model, args.batch, args.redo_invalid)
 
     con.close()
     print("done.")

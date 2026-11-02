@@ -28,21 +28,39 @@ export default function SignDetailScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // `cancelled` drops results if the id changes (or the screen unmounts)
+    // before the queries finish; try/finally guarantees the spinner ends
+    // even when a query fails.
+    let cancelled = false;
+    setLoading(true);
     (async () => {
-      const s = await getSign(signId);
-      setSign(s);
-      if (s) {
-        const ms = await getMeaningsForSign(signId);
-        setMeanings(ms);
-        // Find other signs sharing the same primary word (different 打法).
-        const primary = ms.find((m) => m.order_in_entry === 0);
-        if (primary) {
-          const vs = await getVariantSigns(primary.text, signId);
+      let s: SignRow | null = null;
+      let ms: MeaningRow[] = [];
+      let vs: SearchResult[] = [];
+      try {
+        s = await getSign(signId);
+        if (s) {
+          ms = await getMeaningsForSign(signId);
+          // Find other signs sharing the same primary word (different 打法).
+          const primary = ms.find((m) => m.order_in_entry === 0);
+          if (primary) {
+            vs = await getVariantSigns(primary.text, signId);
+          }
+        }
+      } catch (err) {
+        console.warn("sign detail query failed", err);
+      } finally {
+        if (!cancelled) {
+          setSign(s);
+          setMeanings(ms);
           setVariants(vs);
+          setLoading(false);
         }
       }
-      setLoading(false);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [signId, getSign, getMeaningsForSign, getVariantSigns]);
 
   if (loading) {

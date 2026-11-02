@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -21,19 +21,25 @@ export default function BrowseScreen() {
   const [items, setItems] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const load = useCallback(
-    async (letter: string) => {
-      setLoading(true);
-      const rows = await getSignsByLetter(letter);
-      setItems(rows);
-      setLoading(false);
-    },
-    [getSignsByLetter],
-  );
-
   useEffect(() => {
-    load(selected);
-  }, [selected, load]);
+    // Drop results for a letter the user has already switched away from.
+    let cancelled = false;
+    setLoading(true);
+    getSignsByLetter(selected)
+      .catch((err) => {
+        console.warn("browse query failed", err);
+        return [] as SearchResult[];
+      })
+      .then((rows) => {
+        if (!cancelled) {
+          setItems(rows);
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, getSignsByLetter]);
 
   return (
     <View style={styles.container}>
@@ -65,7 +71,7 @@ export default function BrowseScreen() {
         renderItem={({ item }) => <SignListItem item={item} />}
         ListHeaderComponent={
           <Text style={styles.header}>
-            {selected === "#" ? "Other" : `Letter ${selected}`} · {items.length} signs
+            {selected === "#" ? "Other" : `Letter ${selected}`} · {items.length} words
           </Text>
         }
         ListEmptyComponent={

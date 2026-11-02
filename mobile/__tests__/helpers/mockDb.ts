@@ -43,6 +43,7 @@ export const TREE_RESULT: SearchResult = {
   image_path: "images/v3_txttree_1.jpg",
   text: "树",
   en_text: "tree",
+  variant_index: null,
   letter: "S",
   theme: "植物",
 };

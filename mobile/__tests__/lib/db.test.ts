@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import {
+  escapeLike,
   getMeaningsForSign,
   getSign,
   getSignsByLetter,
@@ -33,7 +34,7 @@ describe("searchSigns", () => {
     expect(sql).toContain("m.text LIKE");
     expect(sql).toContain("m.en_text LIKE");
     expect(sql).toContain("m.en_text");
-    expect(params).toEqual(["%tree%", "%tree%"]);
+    expect(params.slice(0, 2)).toEqual(["%tree%", "%tree%"]);
   });
 
   it("trims whitespace and wraps with wildcards", async () => {
@@ -43,7 +44,43 @@ describe("searchSigns", () => {
     await searchSigns(db, "  tree  ");
 
     const [, params] = (db.getAllAsync as jest.Mock).mock.calls[0];
-    expect(params).toEqual(["%tree%", "%tree%"]);
+    expect(params.slice(0, 2)).toEqual(["%tree%", "%tree%"]);
+  });
+
+  it("ranks exact, then prefix, then whole-word matches first", async () => {
+    const db = fakeDb();
+    (db.getAllAsync as jest.Mock).mockResolvedValue([]);
+
+    await searchSigns(db, "Eat");
+
+    const [sql, params] = (db.getAllAsync as jest.Mock).mock.calls[0];
+    // Regression guard: without relevance ordering an exact hit like 人
+    // ranked ~40th behind every A–Q word containing it.
+    expect(sql).toMatch(/ORDER BY\s+CASE/);
+    expect(params).toEqual([
+      "%Eat%", "%Eat%", // WHERE: substring
+      "Eat", "Eat", // exact
+      "Eat%", "Eat%", // prefix
+      "% eat %", // whole English word
+    ]);
+  });
+
+  it("escapes LIKE wildcards in user input", async () => {
+    const db = fakeDb();
+    (db.getAllAsync as jest.Mock).mockResolvedValue([]);
+
+    await searchSigns(db, "50%_");
+
+    const [sql, params] = (db.getAllAsync as jest.Mock).mock.calls[0];
+    expect(sql).toContain("ESCAPE '\\'");
+    expect(params[0]).toBe("%50\\%\\_%");
+  });
+});
+
+describe("escapeLike", () => {
+  it("escapes %, _ and the escape char itself", () => {
+    expect(escapeLike("a%b_c\\d")).toBe("a\\%b\\_c\\\\d");
+    expect(escapeLike("树")).toBe("树");
   });
 });
 
@@ -57,6 +94,8 @@ describe("getSignsByLetter", () => {
     expect(rows).toEqual([TREE_RESULT]);
     const [sql, params] = (db.getAllAsync as jest.Mock).mock.calls[0];
     expect(sql).toContain("s.letter = ?");
+    // Book (pinyin) order, not Unicode code-point order of m.text.
+    expect(sql).toContain("ORDER BY s.id, m.order_in_entry");
     expect(params).toEqual(["S"]);
   });
 });
@@ -77,7 +116,7 @@ describe("getThemes", () => {
 });
 
 describe("getSignsByTheme", () => {
-  it("matches multi-theme rows with the comma-list LIKE pattern", async () => {
+  it("matches multi-theme rows with the pipe-list LIKE pattern", async () => {
     const db = fakeDb();
     (db.getAllAsync as jest.Mock).mockResolvedValue([TREE_RESULT]);
 
@@ -85,8 +124,10 @@ describe("getSignsByTheme", () => {
 
     expect(rows).toEqual([TREE_RESULT]);
     const [sql, params] = (db.getAllAsync as jest.Mock).mock.calls[0];
-    expect(sql).toContain("',' || s.theme || ',') LIKE");
-    expect(params).toEqual(["%,植物,%"]);
+    // Regression guard: signs.theme is `|`-separated ("交通|就医"). A comma
+    // pattern silently dropped all 52 multi-theme signs from theme browse.
+    expect(sql).toContain("('|' || s.theme || '|') LIKE");
+    expect(params).toEqual(["%|植物|%"]);
   });
 });
 

@@ -24,6 +24,20 @@ describe("SignListItem", () => {
     expect(screen.queryByText("tree")).toBeNull();
   });
 
+  it("marks variant words so 树① and 树② are distinguishable", () => {
+    render(<SignListItem item={{ ...TREE_RESULT, variant_index: 2 }} />);
+
+    expect(screen.getByText("树②")).toBeOnTheScreen();
+  });
+
+  it("renders one meta chip per theme for multi-theme signs", () => {
+    render(<SignListItem item={{ ...TREE_RESULT, theme: "交通|就医" }} />);
+
+    expect(screen.getByText("交通")).toBeOnTheScreen();
+    expect(screen.getByText("就医")).toBeOnTheScreen();
+    expect(screen.queryByText("交通|就医")).toBeNull();
+  });
+
   it("navigates to the sign detail on press", () => {
     render(<SignListItem item={TREE_RESULT} />);
 

@@ -1,6 +1,6 @@
 # Themes flow — pick a theme chip → results → first row → detail.
-# The results footer sits below all tier blocks, so scrollUntilVisible does
-# the heavy lifting; 丁香 is the first row and is guaranteed rendered.
+# The results sit below all tier blocks, so scrollUntilVisible does the
+# heavy lifting; 丁香 is an early row (book order) of the 植物 theme.
 appId: com.example.signlang
 ---
 - launchApp:
@@ -20,7 +20,7 @@ appId: com.example.signlang
     index: 0
 - scrollUntilVisible:
     element:
-      text: "植物 · .* signs"
+      text: "植物 · .* words"
       index: 0
     timeout: 20000
 # The first result row sits right below the header, straddling the tab bar —

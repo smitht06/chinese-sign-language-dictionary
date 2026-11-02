@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FlatList,
   StyleSheet,
@@ -9,26 +9,44 @@ import {
 import { useDb, type SearchResult } from "../../lib/db";
 import SignListItem from "../components/SignListItem";
 
+// Wait for a short typing pause before querying: each keystroke would
+// otherwise run a full-table LIKE scan (noticeable on web's wasm sqlite).
+const SEARCH_DEBOUNCE_MS = 150;
+
 export default function SearchScreen() {
   const { searchSigns } = useDb();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [searched, setSearched] = useState(false);
+  // The query the current `results` belong to (null = nothing searched yet).
+  const [searchedQuery, setSearchedQuery] = useState<string | null>(null);
 
-  const runSearch = useCallback(
-    async (q: string) => {
-      const trimmed = q.trim();
-      if (!trimmed) {
-        setResults([]);
-        setSearched(false);
-        return;
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setResults([]);
+      setSearchedQuery(null);
+      return;
+    }
+    // `cancelled` drops responses for superseded queries: a slow earlier
+    // search must never overwrite the results of a later one.
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      let rows: SearchResult[] = [];
+      try {
+        rows = await searchSigns(trimmed);
+      } catch (err) {
+        console.warn("search failed", err);
       }
-      const rows = await searchSigns(trimmed);
-      setResults(rows);
-      setSearched(true);
-    },
-    [searchSigns],
-  );
+      if (!cancelled) {
+        setResults(rows);
+        setSearchedQuery(trimmed);
+      }
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, searchSigns]);
 
   return (
     <View style={styles.container}>
@@ -37,17 +55,14 @@ export default function SearchScreen() {
         style={styles.input}
         placeholder="Search Chinese or English…"
         value={query}
-        onChangeText={(t) => {
-          setQuery(t);
-          runSearch(t);
-        }}
+        onChangeText={setQuery}
         autoCapitalize="none"
         autoCorrect={false}
         clearButtonMode="while-editing"
       />
-      {searched && results.length === 0 ? (
+      {searchedQuery !== null && results.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>No results for “{query.trim()}”</Text>
+          <Text style={styles.emptyText}>No results for “{searchedQuery}”</Text>
         </View>
       ) : (
         <FlatList

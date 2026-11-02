@@ -14,3 +14,9 @@ __pycache__/
 # ASL-LEX source dataset (not committed) + its generated artifacts
 ASL Data/*
 build/
+
+# PyInstaller desktop build output (build/ is ignored above)
+dist/
+
+# Local Expo state
+.expo/

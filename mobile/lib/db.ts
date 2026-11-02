@@ -33,8 +33,19 @@ export interface SearchResult {
   image_path: string;
   text: string;
   en_text: string | null;
+  /** ①→1, ②→2 … for words with several 打法; NULL when the word has one. */
+  variant_index: number | null;
   letter: string;
   theme: string | null;
+}
+
+/** Columns every list query returns (shape of SearchResult). */
+const RESULT_COLUMNS =
+  "m.sign_id, s.image_path, m.text, m.en_text, m.variant_index, s.letter, s.theme";
+
+/** Escape LIKE wildcards so user input like `%` or `_` matches literally. */
+export function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
 /**
@@ -81,20 +92,37 @@ export function useDb() {
   };
 }
 
-/** Search signs by Chinese word, English translation, or pinyin letter. */
+/**
+ * Search signs by Chinese word or English translation (substring match).
+ *
+ * Ranked by relevance: exact match, then prefix match, then whole-word
+ * English match, then any substring; ties broken by shorter words first and
+ * dictionary order. Without ranking an exact hit like 人 landed ~40th.
+ */
 export async function searchSigns(
   db: SQLiteDatabase,
   query: string,
 ): Promise<SearchResult[]> {
-  const q = `%${query.trim()}%`;
+  const raw = query.trim();
+  const esc = escapeLike(raw);
+  const contains = `%${esc}%`;
+  const prefix = `${esc}%`;
+  const word = `% ${esc.toLowerCase()} %`;
   return db.getAllAsync<SearchResult>(
-    `SELECT m.sign_id, s.image_path, m.text, m.en_text, s.letter, s.theme
+    `SELECT ${RESULT_COLUMNS}
      FROM meanings m
      JOIN signs s ON s.id = m.sign_id
-     WHERE m.text LIKE ? OR m.en_text LIKE ?
-     ORDER BY s.letter, m.order_in_entry
+     WHERE m.text LIKE ? ESCAPE '\\' OR m.en_text LIKE ? ESCAPE '\\'
+     ORDER BY
+       CASE
+         WHEN m.text = ? OR lower(m.en_text) = lower(?) THEN 0
+         WHEN m.text LIKE ? ESCAPE '\\' OR m.en_text LIKE ? ESCAPE '\\' THEN 1
+         WHEN ' ' || lower(m.en_text) || ' ' LIKE ? ESCAPE '\\' THEN 2
+         ELSE 3
+       END,
+       length(m.text), s.id, m.order_in_entry
      LIMIT 200`,
-    [q, q],
+    [contains, contains, raw, raw, prefix, prefix, word],
   );
 }
 
@@ -104,11 +132,13 @@ export async function getSignsByLetter(
   letter: string,
 ): Promise<SearchResult[]> {
   return db.getAllAsync<SearchResult>(
-    `SELECT m.sign_id, s.image_path, m.text, m.en_text, s.letter, s.theme
+    // s.id follows the book's own (pinyin) order; sorting by m.text would be
+    // Unicode code-point order, which is meaningless for Chinese.
+    `SELECT ${RESULT_COLUMNS}
      FROM meanings m
      JOIN signs s ON s.id = m.sign_id
      WHERE s.letter = ?
-     ORDER BY m.text, m.order_in_entry`,
+     ORDER BY s.id, m.order_in_entry`,
     [letter],
   );
 }
@@ -120,18 +150,21 @@ export async function getThemes(db: SQLiteDatabase): Promise<ThemeRow[]> {
   );
 }
 
-/** Get signs belonging to a theme (handles multi-theme rows). */
+/**
+ * Get signs belonging to a theme. signs.theme is a `|`-separated list
+ * (e.g. "交通|就医"), so wrap it in pipes and match `%|name|%`.
+ */
 export async function getSignsByTheme(
   db: SQLiteDatabase,
   theme: string,
 ): Promise<SearchResult[]> {
   return db.getAllAsync<SearchResult>(
-    `SELECT m.sign_id, s.image_path, m.text, m.en_text, s.letter, s.theme
+    `SELECT ${RESULT_COLUMNS}
      FROM meanings m
      JOIN signs s ON s.id = m.sign_id
-     WHERE s.theme IS NOT NULL AND (',' || s.theme || ',') LIKE ?
-     ORDER BY m.text, m.order_in_entry`,
-    [`%,${theme},%`],
+     WHERE s.theme IS NOT NULL AND ('|' || s.theme || '|') LIKE ? ESCAPE '\\'
+     ORDER BY s.id, m.order_in_entry`,
+    [`%|${escapeLike(theme)}|%`],
   );
 }
 
@@ -166,7 +199,7 @@ export async function getVariantSigns(
   excludeSignId: number,
 ): Promise<SearchResult[]> {
   return db.getAllAsync<SearchResult>(
-    `SELECT m.sign_id, s.image_path, m.text, m.en_text, s.letter, s.theme
+    `SELECT ${RESULT_COLUMNS}
      FROM meanings m
      JOIN signs s ON s.id = m.sign_id
      WHERE m.text = ? AND m.sign_id != ?

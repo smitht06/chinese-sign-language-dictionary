@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -14,89 +14,97 @@ export default function ThemesScreen() {
   const [themes, setThemes] = useState<ThemeRow[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [items, setItems] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    getThemes().then(setThemes);
+    let cancelled = false;
+    getThemes()
+      .then((rows) => {
+        if (!cancelled) setThemes(rows);
+      })
+      .catch((err) => console.warn("themes query failed", err));
+    return () => {
+      cancelled = true;
+    };
   }, [getThemes]);
 
-  const load = useCallback(
-    async (theme: string) => {
-      setLoading(true);
-      const rows = await getSignsByTheme(theme);
-      setItems(rows);
-      setLoading(false);
-    },
-    [getSignsByTheme],
-  );
-
   useEffect(() => {
-    if (selected) {
-      load(selected);
+    if (!selected) {
+      return;
     }
-  }, [selected, load]);
+    // Drop results for a theme the user has already switched away from.
+    let cancelled = false;
+    getSignsByTheme(selected)
+      .catch((err) => {
+        console.warn("theme query failed", err);
+        return [] as SearchResult[];
+      })
+      .then((rows) => {
+        if (!cancelled) setItems(rows);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, getSignsByTheme]);
 
   // Group themes by tier, preserving difficulty order.
-  const tiers: { tier: string; themes: ThemeRow[] }[] = [];
-  for (const t of themes) {
-    const last = tiers[tiers.length - 1];
-    if (last && last.tier === t.tier) {
-      last.themes.push(t);
-    } else {
-      tiers.push({ tier: t.tier, themes: [t] });
+  const tiers = useMemo(() => {
+    const out: { tier: string; themes: ThemeRow[] }[] = [];
+    for (const t of themes) {
+      const last = out[out.length - 1];
+      if (last && last.tier === t.tier) {
+        last.themes.push(t);
+      } else {
+        out.push({ tier: t.tier, themes: [t] });
+      }
     }
-  }
+    return out;
+  }, [themes]);
+
+  // One FlatList: the theme picker is the header and the selected theme's
+  // words are the (virtualized) rows. A nested non-scrolling FlatList in the
+  // footer would render every row of a large theme at once.
+  const header = (
+    <View>
+      <Text style={styles.title}>Browse by theme & difficulty</Text>
+      {tiers.map((tier) => (
+        <View key={tier.tier} style={styles.tierBlock}>
+          <Text style={styles.tierLabel}>{tier.tier}</Text>
+          <View style={styles.chips}>
+            {tier.themes.map((t) => (
+              <Pressable
+                key={t.name}
+                style={[styles.chip, selected === t.name && styles.chipActive]}
+                onPress={() => setSelected(t.name)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    selected === t.name && styles.chipTextActive,
+                  ]}
+                >
+                  {t.name}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ))}
+      {selected ? (
+        <Text style={styles.resultsHeader}>
+          {selected} · {items.length} words
+        </Text>
+      ) : null}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
       <FlatList
         style={styles.list}
-        data={tiers}
-        keyExtractor={(t) => t.tier}
-        ListHeaderComponent={
-          <Text style={styles.title}>Browse by theme & difficulty</Text>
-        }
-        renderItem={({ item: tier }) => (
-          <View style={styles.tierBlock}>
-            <Text style={styles.tierLabel}>{tier.tier}</Text>
-            <View style={styles.chips}>
-              {tier.themes.map((t) => (
-                <Pressable
-                  key={t.name}
-                  style={[
-                    styles.chip,
-                    selected === t.name && styles.chipActive,
-                  ]}
-                  onPress={() => setSelected(t.name)}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      selected === t.name && styles.chipTextActive,
-                    ]}
-                  >
-                    {t.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
-        ListFooterComponent={
-          selected ? (
-            <View style={styles.results}>
-              <Text style={styles.resultsHeader}>
-                {selected} · {items.length} signs
-              </Text>
-              <FlatList
-                data={items}
-                keyExtractor={(item) => `${item.sign_id}-${item.text}`}
-                renderItem={({ item }) => <SignListItem item={item} />}
-                scrollEnabled={false}
-              />
-            </View>
-          ) : null
-        }
+        data={selected ? items : []}
+        keyExtractor={(item) => `${item.sign_id}-${item.text}`}
+        renderItem={({ item }) => <SignListItem item={item} />}
+        ListHeaderComponent={header}
       />
     </View>
   );
@@ -153,12 +161,10 @@ const styles = StyleSheet.create({
   chipTextActive: {
     color: "#fff",
   },
-  results: {
+  resultsHeader: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#ddd",
     marginTop: 8,
-  },
-  resultsHeader: {
     padding: 12,
     fontSize: 14,
     color: "#666",

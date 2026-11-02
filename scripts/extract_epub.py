@@ -143,6 +143,7 @@ def main():
     IMG_DIR.mkdir(exist_ok=True)
     conn = init_db()
     stats = []
+    missing_imgs = []
     for vol in VOLUMES:
         vol_root = extract_volume(vol)
         ops = vol_root / "OPS"
@@ -163,6 +164,10 @@ def main():
                     src = src_imgs / img_name
                     if src.exists():
                         shutil.copy2(src, dst_path)
+                    else:
+                        # Row is still inserted (counts are the contract), but
+                        # say so loudly instead of leaving a dangling path.
+                        missing_imgs.append(f"v{vol} {head}: {img_src}")
                 cur = conn.execute(
                     "INSERT INTO signs (image_path, description, source_entry, letter, volume) VALUES (?,?,?,?,?)",
                     (f"images/{dst_name}", desc, head, letter, vol),
@@ -184,6 +189,10 @@ def main():
     for v, L, s, m in stats:
         print(f"  Vol {v}  {L}: signs={s}  meanings={m}")
     print(f"TOTAL  signs={tot_s}  meanings={tot_m}")
+    if missing_imgs:
+        print(f"WARNING: {len(missing_imgs)} entries reference missing images:")
+        for line in missing_imgs[:20]:
+            print(f"  {line}")
 
 
 if __name__ == "__main__":

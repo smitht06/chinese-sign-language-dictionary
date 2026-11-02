@@ -40,6 +40,25 @@ maestro test e2e/                          # run all flows (search / browse / th
 
 Flows assume `appId: com.example.signlang`, launch with `clearState` (so first-launch DB copy is exercised), use ASCII input only (Chinese typed input is unreliable in Maestro), and target first rows (FlatList virtualization hides off-screen rows). Selector gotchas baked into the flows: list rows merge their texts into one accessibility element ("柏树, cypress tree, B"), tab buttons expose combined labels ("Browse, tab, 2 of 3"), the keyboard overlay counts as "visible" for scrollUntilVisible (use `centerElement` before tapping rows), and iOS text nodes appear twice in the tree (asserts use `index: 0`).
 
+## Static web export (Cloudflare Pages)
+
+```bash
+npm run export:web                        # expo export + post_export_web.py, emits dist/
+npx wrangler pages deploy dist --branch=main
+```
+
+Always deploy through `npm run export:web`, never a bare `expo export` — the post-export script relocates the sqlite wasm out of `dist/assets/node_modules/` (Cloudflare skips directories named `node_modules` during upload). `public/_headers` (COOP/COEP for SharedArrayBuffer) and `public/_redirects` (SPA fallback) are copied into `dist/` automatically.
+
+### Watermark
+
+The background watermark shown on every screen is a single PNG asset — no code changes needed to swap it:
+
+1. Overwrite `assets/watermark.png` with your image (keep the filename).
+2. Rebuild and redeploy the web export (above). The image is copied into `dist/` with a content-hash filename, so a fresh export is required to pick up a new file.
+3. Native picks it up automatically on the next `npx expo start` / `eas build` (Metro bundles the `require()` directly — `build_data.py` doesn't touch it).
+
+Sizing: `app/components/Watermark.tsx` renders it in a **square box** (`aspectRatio: 1`, 60% viewport width, max 500px) at `opacity: 0.5` with `resizeMode="contain"` — a non-square image gets letterboxed inside the square, so either pad your PNG to a square canvas or adjust the `aspectRatio`/`height` in that style block. Opacity and size are tunable in the same place.
+
 ## Deployment via EAS (expo.dev)
 
 Profiles in `eas.json`:

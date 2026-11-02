@@ -15,6 +15,9 @@ import os
 import sqlite3
 import sys
 
+# Same validator the translation pipeline applies before storing a row.
+from translate_en import is_valid_translation
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Expected counts from CLAUDE.md. These are the pipeline's contract.
@@ -156,6 +159,38 @@ def check_en_description_coverage(db):
     return ("signs.en_description coverage", n == 0, f"{n} signs untranslated")
 
 
+def check_en_translations_valid(db):
+    """English must actually be English: catches the model echoing the Chinese
+    back (stored as "translated" by older pipeline runs, so the NULL-coverage
+    checks above still pass). Fix with: translate_en.py --redo-invalid."""
+    cur = db.cursor()
+    if not _column_exists(cur, "meanings", "en_text") or not _column_exists(
+        cur, "signs", "en_description"
+    ):
+        return ("English translations valid", True, "skipped (no English columns)")
+    bad_m = [
+        src
+        for src, en in cur.execute(
+            "SELECT text, en_text FROM meanings WHERE en_text IS NOT NULL"
+        )
+        if not is_valid_translation(src, en)
+    ]
+    bad_s = sum(
+        1
+        for src, en in cur.execute(
+            "SELECT description, en_description FROM signs "
+            "WHERE en_description IS NOT NULL"
+        )
+        if not is_valid_translation(src, en)
+    )
+    return (
+        "English translations valid",
+        not bad_m and not bad_s,
+        f"{len(bad_m)} meanings + {bad_s} descriptions are untranslated Chinese "
+        f"(e.g. {bad_m[:5]}); run translate_en.py --redo-invalid",
+    )
+
+
 def check_image_files_exist(db):
     rows = [r[0] for r in db.execute("SELECT image_path FROM signs")]
     missing = [p for p in rows if not os.path.isfile(os.path.join(ROOT, p))]
@@ -195,6 +230,7 @@ CHECKS = [
     check_themes,
     check_en_text_coverage,
     check_en_description_coverage,
+    check_en_translations_valid,
     check_image_files_exist,
     check_asl_paths_valid,
 ]

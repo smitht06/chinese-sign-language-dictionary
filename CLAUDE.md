@@ -182,13 +182,14 @@ Adds English translations to `sign_themed.db` via the DeepSeek chat-completions 
 - `signs.en_description` — English translation of the hand-movement instructions (TEXT, NULL until translated)
 - `translations` — audit table `(kind, source_id, model, status)`; `kind ∈ {'meaning','sign'}`, `source_id` = `meanings.id` or `signs.id`
 
-**Resumable:** only rows whose target column is NULL are translated; commits per batch. Re-run to finish after an interruption. API key comes from `DEEPSEEK_API_KEY` (never hardcoded). Stdlib only (`urllib`).
+**Resumable:** only rows whose target column is NULL are translated; commits per batch. Re-run to finish after an interruption. **Validated:** `is_valid_translation` rejects empty output, echoes of a CJK source, and output that is >20% CJK; rejected rows stay NULL for the next run. A batch whose array length doesn't match the input is retried, then translated one item at a time — never merged (merging shifted translations onto the wrong rows). `--redo-invalid` re-selects stored rows that fail validation (older runs stored ~550 descriptions + 80 words where the model echoed the Chinese back). API key comes from `DEEPSEEK_API_KEY` (never hardcoded). Stdlib only (`urllib`).
 
 ```bash
 export DEEPSEEK_API_KEY=sk-...
 python3 scripts/translate_en.py                 # both passes
 python3 scripts/translate_en.py --only meanings # words only
 python3 scripts/translate_en.py --only descriptions
+python3 scripts/translate_en.py --redo-invalid  # also retry stored echoes / untranslated rows
 ```
 
 Two distinct system prompts: one for short words (`MEANINGS_SYSTEM`), one for hand-movement instructions (`DESCRIPTIONS_SYSTEM`, which preserves `（一）/（二）` step structure and maps hand/finger terminology). The `translations` table lets you audit which rows were translated and by which model.
@@ -197,7 +198,7 @@ Two distinct system prompts: one for short words (`MEANINGS_SYSTEM`), one for ha
 
 An Expo React Native app (expo-router + expo-sqlite) that bundles the full dataset for offline use.
 
-**Data bundling (`mobile/scripts/build_data.py`):** copies `sign_themed.db` → `mobile/assets/data/dictionary.db`, copies all 6699 images → `mobile/assets/data/images/`, and generates `mobile/app/assets.ts` — a static `require()` map from `image_path` → bundled asset. The app resolves images through this map (`SignImage` component). Generated artifacts are gitignored.
+**Data bundling (`mobile/scripts/build_data.py`):** copies `sign_themed.db` → `mobile/assets/data/dictionary.db`, copies all 6699 images → `mobile/assets/data/images/`, and generates `mobile/lib/assets.ts` — a static `require()` map from `image_path` → bundled asset. The app resolves images through this map (`SignImage` component). Generated artifacts are gitignored. The bundled DB copy drops the pipeline-only `translations` table and is VACUUMed. `assets.ts` also exports `DB_NAME = "dictionary-<sha256[:12]>.db"`, which `DatabaseGate` passes as `databaseName`. **Load-bearing:** expo-sqlite only imports the bundled asset when no DB of that name exists on the device, so a fixed name pinned every install to its first-ever copy. The content hash makes data updates reach existing installs.
 
 **Optional ASL images:** if an `asl_images/` folder exists at the repo root, the build script also copies those into `mobile/assets/data/asl_images/`, sets `signs.asl_image_path` for signs whose `image_path` basename matches an ASL filename, and adds an `aslImageAssets` map to `assets.ts`. `SignImage` shows the ASL image (with an "ASL" badge) when `asl_image_path` is set, falling back to the CSL image otherwise.
 
@@ -205,11 +206,13 @@ An Expo React Native app (expo-router + expo-sqlite) that bundles the full datas
 
 
 **App structure (`mobile/app/`):**
-- `_layout.tsx` — root Stack (tabs + sign detail); onInit migration adds en/asl columns for stale cached DBs
-- `(tabs)/_layout.tsx` — bottom tab bar (Search / Browse / Themes)
-- `(tabs)/index.tsx` — search by Chinese or English (`meanings.text` / `meanings.en_text`)
-- `(tabs)/browse.tsx` — browse by letter (A–Z + #)
-- `(tabs)/themes.tsx` — browse by theme, grouped by difficulty tier
+- `_layout.tsx` — root Stack (tabs + sign detail); Watermark + WebTopNav render before the DB opens; `DatabaseGate` wraps the Stack
+- `components/DatabaseGate.tsx` — owns the DB lifecycle: loading splash, one ~1.5s auto-retry, error screen + manual Retry, web-only SharedArrayBuffer hint. Load-bearing: never remove the gate; children must stay unconditional inside `SQLiteProvider` (its memo comparator ignores children, so conditional children would freeze the Stack out on the loading→ready transition); `onInit`/`onError` must be referentially stable (reference-compared); non-suspense + `key` remount is what makes retry work — the `useSuspense` variant caches rejected init promises at module level and can never recover.
+- `Home/_layout.tsx` — bottom tab bar (Search / Browse / Themes)
+- `Home/index.tsx` — search by Chinese or English (`meanings.text` / `meanings.en_text`); debounced 150ms; ranked exact → prefix → whole English word → substring; LIKE wildcards escaped
+- `Home/browse.tsx` — browse by letter (A–Z + #), book (pinyin) order via `s.id`
+- `Home/themes.tsx` — browse by theme, grouped by difficulty tier. `signs.theme` is `|`-separated, so `getSignsByTheme` matches `('|' || theme || '|') LIKE '%|name|%'`
+- Every async data effect uses a `cancelled` flag so a slow, superseded query can never overwrite newer results
 - `sign/[id].tsx` — sign detail: image, Chinese + English word, hand-movement description (中/英), synonyms, other 打法 for the same word
 - `db.ts` — expo-sqlite query helpers (search, by-letter, by-theme, sign detail, variants)
 - `components/SignImage.tsx` — resolves `image_path` via the generated asset map
@@ -234,7 +237,7 @@ Note `mobile/metro.config.js` adds `db` to `assetExts` so the database bundles a
 
 ## Validation
 
-**Primary gate: `python3 scripts/test_data.py`** — runs every data invariant in one shot, read-only, exit 1 on any failure. Covers: counts (6699 signs / 8687 meanings), no empty descriptions, no variant-glyph leakage, valid FKs + letters, theme integrity (31 / 1213 / 52), 100% English coverage (`en_text` + `en_description`), every `image_path` resolving to a real file, `asl_image_path` validity. Also runs on the base DB via `--db signs.db` (theme/en checks auto-skip). CI runs both on every push.
+**Primary gate: `python3 scripts/test_data.py`** — runs every data invariant in one shot, read-only, exit 1 on any failure. Covers: counts (6699 signs / 8687 meanings), no empty descriptions, no variant-glyph leakage, valid FKs + letters, theme integrity (31 / 1213 / 52), 100% English coverage (`en_text` + `en_description`), English that is actually English (`check_en_translations_valid`, same validator as `translate_en.py`), every `image_path` resolving to a real file, `asl_image_path` validity. Also runs on the base DB via `--db signs.db` (theme/en checks auto-skip). CI runs both on every push.
 
 The manual queries below remain as reference for digging into a failure:
 
@@ -262,7 +265,7 @@ sqlite3 sign_themed.db "
 Three layers; layers 1–2 run in GitHub Actions (`.github/workflows/ci.yml`) on every push/PR:
 
 1. **Data invariants (Python)** — `python3 scripts/test_data.py` (and `--db signs.db`). Stdlib only, read-only on the DBs; negative tests go on /tmp copies.
-2. **Unit + component (Jest)** — `cd mobile && npm test`. SQL regression guards in `mobile/__tests__/lib/db.test.ts` pin the en_text/en_description columns to the queries (the "English disappeared" bug class). Screen tests render the real expo-router tree with mocked db/assets. Load-bearing details: `.db` imports and `lib/assets` are stubbed via `moduleNameMapper` (both generated + gitignored — the CI job runs `build_data.py` before `tsc` since type-checking needs the real `lib/assets.ts`), and `renderRouter` needs an **absolute** app-dir path built from `__dirname` (fixture strings resolve against `process.cwd()`, not the test file). `mobile/__tests__/helpers/mockDb.ts` is the shared `useDb` mock.
+2. **Unit + component (Jest)** — `cd mobile && npm test`. SQL regression guards in `mobile/__tests__/lib/db.test.ts` pin the en_text/en_description columns to the queries (the "English disappeared" bug class). Screen tests render the real expo-router tree with mocked db/assets. Load-bearing details: `.db` imports, `lib/assets`, and `^expo-sqlite$` are stubbed via `moduleNameMapper` (both generated + gitignored — the CI job runs `build_data.py` before `tsc` since type-checking needs the real `lib/assets.ts`); the central `expoSqliteMock` runs the provider's `onInit` with a stub db — do not re-add per-file passthrough mocks that skip `onInit`, or DatabaseGate's loading→ready transition never fires; and `renderRouter` needs an **absolute** app-dir path built from `__dirname` (fixture strings resolve against `process.cwd()`, not the test file). `mobile/__tests__/helpers/mockDb.ts` is the shared `useDb` mock.
 3. **E2E (Maestro, local only)** — `maestro test mobile/e2e/` against a local Release build (`npx expo run:ios --configuration Release`). Flows use ASCII input only (Chinese typed input is unreliable in Maestro) and target first rows (FlatList virtualization hides off-screen rows from the accessibility tree).
 
 CI: `test-python` (ubuntu, python 3.13) + `test-mobile` (node 22; `npm ci` → `npx tsc --noEmit` → `npm test`, cwd `mobile`).
@@ -304,6 +307,6 @@ Setup specifics: `metro.config.js` pushes `wasm` to `assetExts` so the sqlite wo
 
 **Web top nav + background watermark** (keep when editing screens/layouts):
 
-- `app/components/WebTopNav.tsx` renders only on web (`Platform.OS === "web"`) and is mounted **once in the root `app/_layout.tsx` above the Stack** — never per-screen. Its inner row uses the same 640px centered-column convention. On web, the Tabs bar and per-tab headers are hidden via `tabBarStyle: { display: "none" }` + `headerShown: Platform.OS !== "web"` in `app/Home/_layout.tsx`, and the root Stack hides the `sign/[id]` header the same way. Native navigation is untouched (Maestro taps those tab buttons).
+- `app/components/WebTopNav.tsx` renders only on web (`Platform.OS === "web"`) and is mounted **once in the root `app/_layout.tsx` above the Stack** — never per-screen. Both WebTopNav and Watermark sit OUTSIDE `DatabaseGate`, so the site chrome renders as soon as the JS bundle hydrates, while the web DB download is still in progress (previously the whole page was blank during the load). Its inner row uses the same 640px centered-column convention. **The nav is client-only mounted (a `mounted` state flag set in a `useEffect`) — never SSR'd into the shell, never hydrated from shell DOM.** Deep links served via the SPA fallback (e.g. `/sign/31` → root `index.html` shell) would otherwise SSR a nav highlighted for the wrong route, and React's hydration reuses the shell's `<a>` nodes, leaving the highlight permanently stuck on the shell's route. Do not remove the mounted flag. On web, the Tabs bar and per-tab headers are hidden via `tabBarStyle: { display: "none" }` + `headerShown: Platform.OS !== "web"` in `app/Home/_layout.tsx`, and the root Stack hides the `sign/[id]` header the same way. Native navigation is untouched (Maestro taps those tab buttons).
 - `app/components/Watermark.tsx` is mounted once in the root layout, and `app/_layout.tsx` wraps the Stack in `ThemeProvider` (imported from `expo-router`, not `@react-navigation/*`) with `DefaultTheme.colors.background: "transparent"` so the watermark shows through the navigator cards. Therefore **screen surfaces must stay translucent — never set an opaque `#fff` on a screen container or list row (use `rgba(255,255,255,0.9)`)**; opaque surfaces locally hide the watermark. Headers + tab bar read `colors.card` and stay white automatically. The asset is `mobile/assets/watermark.png` (500x500, currently a placeholder the user will replace — overwrite the file, no code changes).
 - **`enableScreens(true)` on web is load-bearing** (`app/_layout.tsx`, gated to `Platform.OS === "web"`). react-native-screens reports `screensEnabled() === false` on web, which makes react-navigation's tab fallback render inactive scenes as plain always-visible Views — with translucent surfaces, every visited tab stays visible under the active one ("ghost" content). Enabling screens makes the web `Screen` honor `activityState` and hide inactive scenes with `display:none`. Do not remove that call.

@@ -7,6 +7,14 @@ interface Props {
   item: SearchResult;
 }
 
+const CIRCLED = "①②③④⑤⑥⑦⑧⑨";
+
+/** ①②… suffix so 爱国① / 爱国② are distinguishable in lists. */
+export function variantMark(variantIndex: number | null | undefined): string {
+  if (!variantIndex) return "";
+  return CIRCLED[variantIndex - 1] ?? `(${variantIndex})`;
+}
+
 export default function SignListItem({ item }: Props) {
   const router = useRouter();
 
@@ -17,7 +25,10 @@ export default function SignListItem({ item }: Props) {
     >
       <SignImage imagePath={item.image_path} style={styles.thumb} />
       <View style={styles.info}>
-        <Text style={styles.zh}>{item.text}</Text>
+        <Text style={styles.zh}>
+          {item.text}
+          {variantMark(item.variant_index)}
+        </Text>
         {item.en_text ? (
           <Text style={styles.en} numberOfLines={1}>
             {item.en_text}
@@ -25,7 +36,13 @@ export default function SignListItem({ item }: Props) {
         ) : null}
         <View style={styles.metaRow}>
           {item.letter ? <Text style={styles.meta}>{item.letter}</Text> : null}
-          {item.theme ? <Text style={styles.meta}>{item.theme}</Text> : null}
+          {item.theme
+            ? item.theme.split("|").map((t) => (
+                <Text key={t} style={styles.meta}>
+                  {t}
+                </Text>
+              ))
+            : null}
         </View>
       </View>
     </Pressable>

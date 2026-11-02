@@ -16,19 +16,20 @@ appId: com.example.signlang
 - tapOn:
     id: "search-input"
 - inputText: "tree"
-# 柏树 is the first result row (ordered by letter); wait for the query to land.
+# Exact English matches rank first, so 树① (tree) is the first result row;
+# wait for the query to land.
 - extendedWaitUntil:
-    visible: "柏树, cypress tree.*"
+    visible: "树①, tree.*"
     timeout: 10000
 - scrollUntilVisible:
     element:
-      text: "树, tree.*"
+      text: "树①, tree.*"
       index: 0
     # Center the row above the keyboard overlay before tapping — a row merely
     # "visible" can still sit under the keyboard, and the tap would hit keys.
     centerElement: true
 - tapOn:
-    text: "树, tree.*"
+    text: "树①, tree.*"
     index: 0
 - extendedWaitUntil:
     visible:

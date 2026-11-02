@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { SQLiteProvider, type SQLiteDatabase } from "expo-sqlite";
+import { DB_NAME } from "../../lib/assets";
 
 // Bundled dictionary DB (copied by mobile/scripts/build_data.py).
 const DB_ASSET = require("../../assets/data/dictionary.db");
@@ -24,10 +25,10 @@ type Phase = "loading" | "ready" | "error";
 /**
  * Ensure the English-translation + ASL media columns exist on the opened DB.
  *
- * The bundled dictionary.db already includes these columns, but a previously
- * cached copy in the app's document directory (from an older build) may not.
- * SQLiteProvider only copies the asset on first launch, so we migrate here to
- * make the app robust against stale cached databases.
+ * The bundled dictionary.db already includes these columns. SQLiteProvider
+ * only copies the asset when no DB named DB_NAME exists on the device; DB_NAME
+ * is content-hashed by build_data.py so data updates get a fresh copy. This
+ * migration is a belt-and-braces guard for any stale copy that slips through.
  */
 async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const signCols = await db.getAllAsync<{ name: string }>(
@@ -174,7 +175,7 @@ export default function DatabaseGate({ children }: { children: ReactNode }) {
       ) : (
         <SQLiteProvider
           key={attempt}
-          databaseName="dictionary.db"
+          databaseName={DB_NAME}
           assetSource={{ assetId: DB_ASSET }}
           onInit={handleInit}
           onError={handleError}
